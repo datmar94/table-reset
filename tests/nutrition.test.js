@@ -1,7 +1,7 @@
 // Checks for the math that everything else relies on. Open tests/index.html to run them.
 import { addDays, fmtNum, goalDate, macroSplit, nutrientsFor, recipeNutrition, stockNeeds, stockStatus, targets, toBase, weekStart, LB_PER_KG } from '../js/nutrition.js';
 import { parseLine, matchIngredient, bestHit, newFood } from '../js/views/recipeEdit.js';
-import { buildFood, offProduct, portionUnit, usdaHit, usdaPortions } from '../js/foods.js';
+import { buildFood, offProduct, portionUnit, servingPortion, usdaHit, usdaPortions } from '../js/foods.js';
 import { baseAmount, unitsFor } from '../js/nutrition.js';
 import { sampleData } from '../js/seed.js';
 import { byId } from '../js/store.js';
@@ -149,6 +149,16 @@ test('Barcode products are read from Open Food Facts', () => {
   const milk = offProduct({ status: 1, product: { product_name: 'Milk', product_quantity: 1000, product_quantity_unit: 'ml', nutriments: { 'energy-kcal_100g': 64 } } });
   eq(milk.basis.unit, 'ml'); eq(milk.pack.unit, 'ml');
   eq(offProduct({ status: 1, product: { product_name: 'Oats', quantity: '18 oz', nutriments: { 'energy-kcal_100g': 379 } } }).pack.qty, 510, 'size from the label text');
+});
+test('Scanned foods use the label’s serving size', () => {
+  // US Nutella, as Open Food Facts returns it: the label is per 37 g serving.
+  const p = offProduct({ status: 1, product: { product_name: 'Nutella', serving_size: '2 tbsp (37 g)', serving_quantity: 37, nutrition_data_per: '100g', nutriments: { 'energy-kcal_100g': 540, proteins_100g: 5.41, carbohydrates_100g: 59.46, fat_100g: 29.73, 'energy-kcal_serving': 200, proteins_serving: 2, carbohydrates_serving: 22, fat_serving: 11 } } });
+  eq(p.basis.qty, 37); eq(p.basis.unit, 'g'); eq(p.per.kcal, 200); eq(p.per.p, 2); eq(p.per.c, 22); eq(p.per.f, 11); eq(p.serving, '2 tbsp (37 g)');
+  near(nutrientsFor({ ...p, id: 'n' }, 2, 'tbsp').kcal, 200, 1, '2 tbsp is one serving');
+  // No per-serving numbers: worked out from per 100 g.
+  const c = offProduct({ status: 1, product: { product_name: 'Cereal', serving_size: '39g', serving_quantity: 39, nutriments: { 'energy-kcal_100g': 359, proteins_100g: 12.8 } } });
+  eq(c.per.kcal, 140); eq(c.per.p, 5); eq(c.convert.length, 0);
+  eq(servingPortion('1 1/2 cups (45 g)').qty, 1.5); eq(servingPortion('1 bar (40g)').unit, 'each'); eq(servingPortion('1 serving (37 g)'), null);
 });
 test('Import keeps lines that aren’t in Ingredients', () => {
   const none = newFood({ name: 'Saffron', qty: 1, unit: 'tsp' }, null);

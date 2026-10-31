@@ -127,7 +127,21 @@ export async function foodPortions(ids, key = DEMO_KEY) {
 
 // ---------- Open Food Facts (barcodes) ----------
 
-/** A product → name and an ingredient built from its label. Null when it has no nutrition. */
+/** "2 tbsp (32 g)" → { qty: 2, unit: 'tbsp' }; "1 1/2 cups" → 1.5 cup. Null for "1 serving" or plain grams. */
+export function servingPortion(text) {
+  const m = String(text || '').toLowerCase().match(/^\s*(\d+(?:\.\d+)?)?(?:\s*(\d+)\/(\d+))?\s*([a-z][a-z. ]*)/);
+  if (!m) return null;
+  const qty = (m[1] ? +m[1] : 0) + (m[2] ? +m[2] / +m[3] : 0);
+  const word = m[4].trim();
+  if (!(qty > 0) || /^(serving|container|portion|g|gram|ml)\b/.test(word)) return null;
+  const unit = portionUnit(word);
+  return unit && kindOf(unit) !== 'mass' ? { qty, unit } : null;
+}
+
+/**
+ * A product → name and an ingredient built from its label. Null when it has no nutrition.
+ * Nutrition is given per serving, like the label, when the product lists a serving size; else per 100 g.
+ */
 export function offProduct(json) {
   const p = json && json.status === 1 ? json.product : null;
   if (!p || !p.nutriments) return null;
@@ -135,23 +149,46 @@ export function offProduct(json) {
   const kcal = n['energy-kcal_100g'] ?? (n.energy_100g != null ? n.energy_100g / 4.184 : null);
   if (kcal == null) return null;
   const liquid = /ml/i.test(p.nutrition_data_per || '') || /^(ml|cl|l)$/i.test(p.product_quantity_unit || '');
-  const name = [p.brands ? p.brands.split(',')[0].trim() : '', p.product_name || p.generic_name || ''].filter(Boolean).join(' ').trim() || 'Scanned food';
-  const per = { kcal: Math.round(kcal), p: round(n.proteins_100g || 0), c: round(n.carbohydrates_100g || 0), f: round(n.fat_100g || 0) };
+  const own = liquid ? 'ml' : 'g';
+  const brand = p.brands ? p.brands.split(',')[0].trim() : '';
+  const product = String(p.product_name || p.generic_name || '').trim();
+  // Skip the brand when the product name already starts with it ("Nutella", not "Nutella Nutella").
+  const name = (brand && !product.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${product}` : product || brand).trim() || 'Scanned food';
+  const per100 = { kcal, p: n.proteins_100g || 0, c: n.carbohydrates_100g || 0, f: n.fat_100g || 0 };
+  const sq = +p.serving_quantity;
+  let basis = { qty: 100, unit: own }, per, serving = '', convert = [];
+  if (sq > 0) {
+    // The label's own per-serving numbers when given, so they match the package exactly.
+    const pick = (kServing, v100) => (n[kServing] != null ? +n[kServing] : (v100 * sq) / 100);
+    basis = { qty: round(sq), unit: own };
+    per = {
+      kcal: Math.round(pick('energy-kcal_serving', kcal)),
+      p: round(pick('proteins_serving', per100.p)),
+      c: round(pick('carbohydrates_serving', per100.c)),
+      f: round(pick('fat_serving', per100.f)),
+    };
+    serving = String(p.serving_size || `${round(sq)} ${own}`).trim();
+    // "2 tbsp (32 g)" also lets recipes measure it in tablespoons.
+    const portion = servingPortion(serving);
+    if (portion) convert.push({ unit: kindOf(portion.unit) === 'count' ? 'each' : 'ml', qty: toBase(portion.qty, portion.unit), base: round(sq, 4) });
+  } else {
+    per = { kcal: Math.round(kcal), p: round(per100.p), c: round(per100.c), f: round(per100.f) };
+  }
   // The package size, from the number field or else the label text ("400 g", "1.5 L", "16 oz").
-  let pack = +p.product_quantity > 0 ? { qty: +p.product_quantity, unit: liquid ? 'ml' : 'g' } : null;
+  let pack = +p.product_quantity > 0 ? { qty: Math.round(+p.product_quantity), unit: own } : null;
   const q = !pack && String(p.quantity || '').toLowerCase().match(/([\d.]+)\s*(kg|g|ml|cl|l|oz|lb|fl oz)\b/);
   if (q) {
     const v = +q[1], u = q[2];
     const conv = { kg: [1000, 'g'], g: [1, 'g'], ml: [1, 'ml'], cl: [10, 'ml'], l: [1000, 'ml'], oz: [28.3495, 'g'], lb: [453.592, 'g'], 'fl oz': [29.5735, 'ml'] }[u];
     if (v > 0 && conv && (conv[1] === 'ml') === liquid) pack = { qty: Math.round(v * conv[0]), unit: conv[1] };
   }
-  return { name, basis: { qty: 100, unit: liquid ? 'ml' : 'g' }, per, pack, barcode: p.code || json.code };
+  return { name, basis, per, convert, serving, pack, barcode: p.code || json.code };
 }
 
 export async function lookupBarcode(code) {
   const clean = String(code).replace(/\D/g, '');
   if (clean.length < 8) throw new Error('That barcode number looks too short.');
-  const fields = 'code,product_name,generic_name,brands,quantity,product_quantity,product_quantity_unit,nutrition_data_per,nutriments';
+  const fields = 'code,product_name,generic_name,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutrition_data_per,nutriments';
   const json = await getJson(`${OFF}${clean}.json?fields=${fields}`);
   return offProduct(json);
 }

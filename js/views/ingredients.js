@@ -56,9 +56,9 @@ function draftFor(id) {
         name: ing.name, category: ing.category, bq: String(ing.basis.qty), bu: ing.basis.unit,
         kcal: String(ing.per.kcal), p: String(ing.per.p), c: String(ing.per.c), f: String(ing.per.f),
         stock: fmtNum(stockIn(ing), 'g'), su: ing.stockUnit, low: ing.lowAt ? String(ing.lowAt) : '', staple: !!ing.staple, source: ing.source || 'Entered by you', error: null,
-        convert: ing.convert || [], barcode: ing.barcode || '', pack: ing.pack || null,
+        convert: ing.convert || [], barcode: ing.barcode || '', pack: ing.pack || null, serving: ing.serving || '', checkLabel: false,
       }
-    : { name: ui.newIngName || '', category: 'Other', bq: '100', bu: 'g', kcal: '', p: '', c: '', f: '', stock: '', su: 'g', low: '', staple: false, source: 'Entered by you', error: null, convert: [], barcode: '', pack: null };
+    : { name: ui.newIngName || '', category: 'Other', bq: '100', bu: 'g', kcal: '', p: '', c: '', f: '', stock: '', su: 'g', low: '', staple: false, source: 'Entered by you', error: null, convert: [], barcode: '', pack: null, serving: '', checkLabel: false };
   ui.newIngName = '';
   if (!id && ui.newIngPrefill) { applyProduct(ui.drafts[key], ui.newIngPrefill); ui.newIngPrefill = null; }
   return ui.drafts[key];
@@ -85,9 +85,11 @@ ${dr.error ? html`<p class="notice warn" role="alert">${dr.error}</p>` : ''}
 <label class="field">Name<input class="input" type="text" data-field="i-name" data-key="i-name" value="${dr.name}" autocomplete="off" placeholder="e.g. Chicken thighs, boneless"></label>
 <label class="field">Group<select class="select" data-field="i-category" data-key="i-category">${CATEGORIES.map((c) => html`<option${c === dr.category ? html` selected` : ''}>${c}</option>`)}</select></label>
 </section>
-<section class="card"><h2>Nutrition</h2><p class="small muted">Look it up, scan the package, or copy the numbers from the label.</p>
+<section class="card"><h2>Nutrition</h2><p class="small muted">Look it up, scan the package, or copy the label: the serving size in grams (the number in brackets), then the numbers for one serving.</p>
 <div class="row wrap"><button type="button" class="btn outline" data-action="ing-lookup" style="flex:1">${icon('search', 18)}Look up nutrition</button><button type="button" class="btn outline" data-action="ing-scan-here" style="flex:1">${icon('scan', 18)}Scan barcode</button></div>
+${dr.checkLabel ? html`<p class="notice ok" role="status">Compare these with the Nutrition Facts on the package. Shoppers add this information, so it can be wrong or out of date. If a number is different, type in what the label says.</p>` : ''}
 <div class="grid2">${num('Amount', 'i-bq', dr.bq)}${unitSelect('i-bu', dr.bu, UNIT_LIST, 'Unit')}</div>
+${dr.serving ? html`<p class="small muted">One serving on the label: ${dr.serving}</p>` : ''}
 <div class="grid2">${num('Calories', 'i-kcal', dr.kcal)}${num('Protein (g)', 'i-p', dr.p)}${num('Carbs (g)', 'i-c', dr.c)}${num('Fat (g)', 'i-f', dr.f)}</div>
 ${dr.convert.length ? html`<p class="small muted">Also measured as: ${dr.convert.map((c) => convertText(c, dr)).join(' · ')}</p>` : ''}
 <p class="tiny muted">Source: ${dr.source}</p></section>
@@ -131,6 +133,8 @@ function applyProduct(dr, p) {
   dr.convert = p.convert || [];
   if (kindOf(dr.su) !== kindOf(dr.bu)) { dr.su = dr.bu; dr.stock = ''; }
   if (p.barcode) dr.barcode = p.barcode;
+  dr.serving = p.serving || '';
+  dr.checkLabel = !!p.barcode;
   if (p.pack) {
     dr.pack = p.pack;
     if (!dr.stock) { dr.su = p.pack.unit; dr.stock = String(p.pack.qty); }
@@ -223,7 +227,7 @@ export const ingredientsView = {
       const old = id ? getData().ingredients.find((x) => x.id === id) : null;
       const ing = {
         ...(old || {}),
-        id: id || uid(), name: dr.name.trim(), category: dr.category, basis: { qty: bq, unit: dr.bu }, convert: dr.convert, barcode: dr.barcode || undefined, pack: dr.pack || undefined, needsNutrition: undefined,
+        id: id || uid(), name: dr.name.trim(), category: dr.category, basis: { qty: bq, unit: dr.bu }, convert: dr.convert, barcode: dr.barcode || undefined, pack: dr.pack || undefined, serving: dr.serving || undefined, needsNutrition: undefined,
         per: { kcal: +dr.kcal || 0, p: +dr.p || 0, c: +dr.c || 0, f: +dr.f || 0 },
         stock: toBase(stock, dr.su), stockUnit: dr.su, lowAt: parseFloat(dr.low) || 0, staple: dr.staple, source: dr.source,
       };
@@ -295,9 +299,11 @@ export const ingredientsView = {
   },
   fields: {
     'ing-query': (v) => { ui.ingQuery = v; return true; },
-    'i-name': setField('name', true), 'i-category': setField('category'), 'i-bq': setField('bq'),
+    'i-name': setField('name', true), 'i-category': setField('category'),
+    'i-bq': (v) => { const dr = cur(); dr.bq = v; dr.error = null; if (dr.serving) { dr.serving = ''; return true; } },
     'i-bu': (v) => {
       const dr = cur();
+      dr.serving = '';
       if (kindOf(dr.bu) !== kindOf(v)) dr.convert = [];
       dr.bu = v;
       if (kindOf(dr.su) !== kindOf(v) || !dr.stock) dr.su = v;
