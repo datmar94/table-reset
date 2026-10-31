@@ -55,7 +55,7 @@ function fromDraft(dr, base) {
 }
 
 function numberField(label, field, value, step = '1') {
-  return html`<label class="field">${label}<input class="input" type="number" inputmode="decimal" step="${step}" data-field="${field}" data-key="${field}" value="${value}"></label>`;
+  return html`<label class="field">${label}<input class="input" type="text" inputmode="decimal" autocomplete="off" data-field="${field}" data-key="${field}" value="${value}"></label>`;
 }
 
 function render(params) {
@@ -95,7 +95,7 @@ ${imp ? html`<div class="grid2">${numberField('Height (ft)', 'm-ft', dr.ft)}${nu
 ${age > 0 && age < 18 ? html`<p class="notice warn">These targets are made for adults. Check with a doctor before setting goals for someone under 18.</p>` : ''}
 </section>
 <section class="card">
-<div class="grid2"><div class="field"><span id="goal-l">Goal</span>${seg([['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], dr.goal, 'm-goal', ' aria-labelledby="goal-l"')}</div>
+<div class="stack" style="gap:12px"><div class="field"><span id="goal-l">Goal</span>${seg([['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']], dr.goal, 'm-goal', ' aria-labelledby="goal-l"')}</div>
 ${dr.goal !== 'maintain' ? numberField(`Goal weight (${unit})`, 'm-goalwt', dr.goalWt, '0.1') : ''}</div>
 ${dr.goal !== 'maintain' ? html`<div class="field"><span id="pace-l">Pace</span><div class="grid4" role="group" aria-labelledby="pace-l">${PACE[dr.units].map((p, i) => html`<button type="button" class="btn plain${i === dr.pace ? ' on' : ''}" data-action="m-pace" data-value="${i}"${pressed(i === dr.pace)}>${p} ${unit}/wk</button>`)}</div></div>` : ''}
 <p class="small" style="color:var(--muted2)">${goalNote}</p>

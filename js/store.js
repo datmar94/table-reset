@@ -5,7 +5,7 @@ const DATA_KEY = 'mealmacros.data.v1';
 const DEVICE_KEY = 'mealmacros.device.v1';
 
 export function emptyData() {
-  return { version: 1, settings: { defaultUnits: 'imperial' }, members: [], ingredients: [], recipes: [], entries: [] };
+  return { version: 1, settings: { defaultUnits: 'imperial' }, members: [], ingredients: [], recipes: [], entries: [], shopping: [] };
 }
 
 function read(key) {

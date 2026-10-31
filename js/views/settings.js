@@ -28,6 +28,11 @@ ${seg([['imperial', 'lb · ft/in'], ['metric', 'kg · cm']], d.settings.defaultU
 <p class="small muted">Each member can still switch in their own profile.</p></section>
 <section class="card"><h2>Install on this device</h2>
 <p>Open the app in Chrome, tap the menu (three dots), then <strong>Add to Home screen</strong> or <strong>Install app</strong>. It then opens full screen like any other app, and works without internet.</p></section>
+<section class="card" aria-labelledby="food-h"><h2 id="food-h">Food database</h2>
+<p class="small">“Look up nutrition” uses the free USDA food database. Without a key of your own, everyone shares a demo key that only allows a few lookups an hour.</p>
+<p class="small">To get your own free key: open <strong>api.data.gov/signup</strong>, enter your name and email, and the key arrives by email. Paste it here.</p>
+<label class="field">Your USDA key<input class="input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-field="food-key" data-key="food-key" value="${d.settings.foodKey || ''}" placeholder="Using the shared demo key"></label>
+<p class="tiny muted">Barcode lookups use Open Food Facts, which needs no key.</p></section>
 <section class="card"><div class="spread"><h2>Sync</h2><span class="badge muted">Not set up yet</span></div>
 <p>Right now everything is saved on this device only. Syncing your phone and tablet is the next step to build. Until then you can move data with a backup file below.</p></section>
 </div>
@@ -88,6 +93,7 @@ export const settingsView = {
     },
   },
   fields: {
+    'food-key': (v) => update((d) => { d.settings.foodKey = v.trim(); }),
     'import-file': (_v, _ds, el) => {
       const file = el.files && el.files[0];
       if (!file) return;

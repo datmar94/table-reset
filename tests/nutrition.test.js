@@ -1,6 +1,8 @@
 // Checks for the math that everything else relies on. Open tests/index.html to run them.
 import { addDays, fmtNum, goalDate, macroSplit, nutrientsFor, recipeNutrition, stockNeeds, stockStatus, targets, toBase, weekStart, LB_PER_KG } from '../js/nutrition.js';
-import { parseLine, matchIngredient } from '../js/views/recipeEdit.js';
+import { parseLine, matchIngredient, bestHit, newFood } from '../js/views/recipeEdit.js';
+import { buildFood, offProduct, portionUnit, usdaHit, usdaPortions } from '../js/foods.js';
+import { baseAmount, unitsFor } from '../js/nutrition.js';
 import { sampleData } from '../js/seed.js';
 import { byId } from '../js/store.js';
 
@@ -111,6 +113,58 @@ test('Lines match the right ingredient', () => {
   eq(matchIngredient('large eggs, beaten', ings).name, 'Large eggs');
   eq(matchIngredient('chopped broccoli florets', ings).name, 'Broccoli, chopped');
   eq(matchIngredient('salmon fillets', ings), null);
+});
+
+test('Looked-up foods convert between cups, grams and pieces', () => {
+  const flour = buildFood({ kcal: 364, p: 10.3, c: 76.3, f: 0.98 }, [{ unit: 'cup', qty: 1, grams: 125 }], 'cup');
+  eq(flour.basis.unit, 'cup');
+  eq(flour.per.kcal, 455, 'kcal per cup');
+  near(nutrientsFor(flour, 100, 'g').kcal, 364, 0.5, '100 g');
+  near(nutrientsFor(flour, 0.5, 'cup').kcal, 227.5, 0.01, 'half a cup');
+  const egg = buildFood({ kcal: 143, p: 12.6, c: 0.7, f: 9.5 }, [{ unit: 'each', qty: 1, grams: 50 }], 'each');
+  eq(egg.basis.unit, 'each');
+  near(nutrientsFor(egg, 100, 'g').kcal, 143, 1, 'two eggs by weight');
+  const plain = buildFood({ kcal: 120, p: 20, c: 0, f: 4 }, [], 'cup');
+  eq(plain.basis.unit, 'g', 'no cup weight known, stays per 100 g');
+  eq(nutrientsFor(plain, 1, 'cup'), null);
+  eq(unitsFor(flour).includes('g'), true);
+  near(baseAmount(flour, 125, 'g'), 236.588, 0.01, '125 g of flour is a cup');
+});
+test('USDA results and portions are read', () => {
+  const hit = usdaHit({ fdcId: 1, description: 'CHICKEN, BREAST, RAW', foodNutrients: [{ nutrientNumber: '957', value: 120 }, { nutrientNumber: '203', value: 22.5 }, { nutrientNumber: '204', value: 2.6 }] });
+  eq(hit.name, 'Chicken, breast, raw'); eq(hit.per100.kcal, 120); eq(hit.per100.p, 22.5); eq(hit.per100.c, 0);
+  const ps = usdaPortions({ foodPortions: [
+    { amount: 1, modifier: 'tablespoon', measureUnit: { name: 'undetermined' }, gramWeight: 14 },
+    { amount: 1, measureUnit: { name: 'cup' }, modifier: 'chopped', gramWeight: 140 },
+    { amount: 1, modifier: 'large', measureUnit: { name: 'undetermined' }, gramWeight: 50 },
+    { amount: 1, modifier: 'serving (4 oz)', measureUnit: { name: 'undetermined' }, gramWeight: 0 },
+  ] });
+  eq(ps.map((p) => p.unit).join(','), 'tbsp,cup,each');
+  eq(portionUnit('fl oz'), 'fl oz'); eq(portionUnit('cup, sliced'), 'cup'); eq(portionUnit('oz'), 'oz'); eq(portionUnit('dash'), null);
+});
+test('Barcode products are read from Open Food Facts', () => {
+  const p = offProduct({ status: 1, code: '3017624010701', product: { brands: 'Ferrero', product_name: 'Nutella', product_quantity: 400, product_quantity_unit: 'g', nutrition_data_per: '100g', nutriments: { 'energy-kcal_100g': 539, proteins_100g: 6.3, carbohydrates_100g: 57.5, fat_100g: 30.9 } } });
+  eq(p.name, 'Ferrero Nutella'); eq(p.per.kcal, 539); eq(p.basis.unit, 'g'); eq(p.pack.qty, 400); eq(p.barcode, '3017624010701');
+  eq(offProduct({ status: 0 }), null);
+  const milk = offProduct({ status: 1, product: { product_name: 'Milk', product_quantity: 1000, product_quantity_unit: 'ml', nutriments: { 'energy-kcal_100g': 64 } } });
+  eq(milk.basis.unit, 'ml'); eq(milk.pack.unit, 'ml');
+  eq(offProduct({ status: 1, product: { product_name: 'Oats', quantity: '18 oz', nutriments: { 'energy-kcal_100g': 379 } } }).pack.qty, 510, 'size from the label text');
+});
+test('Import keeps lines that aren’t in Ingredients', () => {
+  const none = newFood({ name: 'Saffron', qty: 1, unit: 'tsp' }, null);
+  eq(none.needsNutrition, true); eq(none.basis.unit, 'cup'); eq(none.stockUnit, 'tsp'); eq(none.stock, 0); eq(none.unitOk, true);
+  const found = newFood({ name: 'Eggs', qty: 3, unit: 'each' }, { ...buildFood({ kcal: 143, p: 12.6, c: 0.7, f: 9.5 }, [{ unit: 'each', qty: 1, grams: 50 }], 'each'), source: 'USDA: Egg' });
+  eq(found.needsNutrition, false); eq(found.stockUnit, 'each'); eq(found.per.kcal, 72);
+  const pick = bestHit('chicken breast', [{ name: 'Lunchmeat, chicken breast, sliced' }, { name: 'Chicken, broilers or fryers, breast, meat only, raw' }]);
+  eq(pick.name, 'Chicken, broilers or fryers, breast, meat only, raw');
+  eq(bestHit('saffron', [{ name: 'Beef, ground' }]), null);
+});
+test('Recipes using cups of a food stocked in grams take the right amount', () => {
+  const flour = { id: 'f', basis: { qty: 100, unit: 'g' }, per: { kcal: 364, p: 10, c: 76, f: 1 }, convert: [{ unit: 'ml', qty: 1, base: 125 / 236.588 }], stock: 500, stockUnit: 'g' };
+  const [x] = stockNeeds({ servings: 2, items: [{ ingredientId: 'f', qty: 2, unit: 'cup' }] }, 2, { f: flour });
+  near(x.need, 250, 0.01, 'grams needed'); eq(x.short, false);
+  const [y] = stockNeeds({ servings: 1, items: [{ ingredientId: 'f', qty: 2, unit: 'each' }] }, 1, { f: flour });
+  eq(y.short, true, 'no way to convert pieces');
 });
 
 const out = document.getElementById('out');

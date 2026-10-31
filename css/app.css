@@ -232,6 +232,8 @@ h1, h2, h3, p { margin: 0; }
 .tile-f { background: var(--fat-tint); } .tile-f span { color: var(--fat-text); }
 .tile-k { background: var(--seg); } .tile-k span { color: var(--muted2); }
 .macro-tiles span { font-size: 12px; font-weight: 700; }
+.left-tiles > div { padding: 8px; min-width: 0; }
+.left-tiles strong { font-size: 14px; overflow-wrap: anywhere; }
 .split-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--track); }
 .split-bar i { display: block; height: 100%; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; }
@@ -294,3 +296,12 @@ h1, h2, h3, p { margin: 0; }
 .item-row .grow { flex-basis: 100%; }
 .item-row .input.short { flex: 1; }
 @media (min-width: 600px) { .item-row .grow { flex-basis: auto; } .item-row .input.short { flex: none; } }
+
+/* Barcode scanner */
+.scanner { z-index: 80; }
+.scan-view { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 4 / 3; max-height: 46vh; }
+.scan-view video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-frame { position: absolute; left: 12%; right: 12%; top: 30%; bottom: 30%; border: 3px solid var(--accent); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35); }
+
+/* Food lookup results */
+.lookup-list { max-height: 50vh; overflow: auto; }

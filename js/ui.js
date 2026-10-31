@@ -42,6 +42,7 @@ const PATHS = {
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z M20 20l-4-4',
   link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
   star: 'M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8 6.6 19.7l1.1-6.1-4.5-4.2 6.1-.8z',
+  scan: 'M4 7V5a1 1 0 0 1 1-1h2 M17 4h2a1 1 0 0 1 1 1v2 M20 17v2a1 1 0 0 1-1 1h-2 M7 20H5a1 1 0 0 1-1-1v-2 M8 8v8 M11 8v8 M14 8v8 M17 8v8',
   list: 'M9 6h11 M9 12h11 M9 18h11 M4.5 6h.01 M4.5 12h.01 M4.5 18h.01',
   copy: 'M8 8h11v11H8z M5 16V5h11',
   gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
@@ -88,6 +89,12 @@ export function macroLine(n) {
   return `${fmtInt(n.kcal)} kcal · P ${fmtInt(n.p)} · C ${fmtInt(n.c)} · F ${fmtInt(n.f)}`;
 }
 
+/** Calories and macros left against a target; going over shows as "over". */
+export function leftTiles(left, label) {
+  const tile = (cls, name, v, unit) => html`<div class="${cls}"><span>${name}</span><strong class="num">${v < -0.5 ? `${fmtInt(-v)}${unit} over` : `${fmtInt(Math.max(0, v))}${unit}`}</strong></div>`;
+  return html`<div class="stack" style="gap:6px"><span class="small bold">${label}</span>
+<div class="grid4 macro-tiles left-tiles">${tile('tile-k', 'Calories', left.kcal, '')}${tile('tile-p', 'Protein', left.p, ' g')}${tile('tile-c', 'Carbs', left.c, ' g')}${tile('tile-f', 'Fat', left.f, ' g')}</div></div>`;
+}
 export function heroTotals(n, kcalLabel = 'kcal') {
   return html`<section class="hero" aria-live="polite"><div class="hero-grid">
 <div><span>${kcalLabel}</span><strong class="num">${fmtInt(n.kcal)}</strong></div>

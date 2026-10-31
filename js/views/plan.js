@@ -1,7 +1,7 @@
 import { getData, update, uid } from '../store.js';
 import { ui, maps, currentMember, dayTotals, entriesFor, entryNutrition, entryName, openSheet, closeSheet, toast, refresh } from '../app.js';
-import { addDays, dayKey, fmtAmount, fmtInt, fromBase, kindOf, nutrientsFor, parseDay, recipeNutrition, scale, stockStatus, targets, toBase, unitsLike, weekStart } from '../nutrition.js';
-import { html, icon, pressed, bar, macroBars, memberChips, seg, stepper, SLOTS, slotLabel, servingsText } from '../ui.js';
+import { addDays, baseAmount, dayKey, fmtAmount, fmtInt, fromBase, nutrientsFor, parseDay, recipeNutrition, scale, stockStatus, targets, unitsFor, weekStart } from '../nutrition.js';
+import { html, icon, pressed, bar, leftTiles, macroBars, memberChips, seg, stepper, SLOTS, slotLabel, servingsText } from '../ui.js';
 import { welcome } from './progress.js';
 
 function entryQty(e) {
@@ -40,12 +40,14 @@ export function shoppingList(startKey) {
       if (!r) continue;
       for (const it of r.items) {
         const ing = m.ingById[it.ingredientId];
-        if (!ing || kindOf(it.unit) !== kindOf(ing.basis.unit)) continue;
-        need[ing.id] = (need[ing.id] || 0) + (toBase(it.qty, it.unit) * e.servings) / r.servings;
+        const base = baseAmount(ing, it.qty, it.unit);
+        if (!Number.isFinite(base)) continue;
+        need[ing.id] = (need[ing.id] || 0) + (base * e.servings) / r.servings;
       }
     } else {
       const ing = m.ingById[e.ingredientId];
-      if (ing && kindOf(e.unit) === kindOf(ing.basis.unit)) need[ing.id] = (need[ing.id] || 0) + toBase(e.qty, e.unit);
+      const base = baseAmount(ing, e.qty, e.unit);
+      if (Number.isFinite(base)) need[ing.id] = (need[ing.id] || 0) + base;
     }
   }
   const out = [];
@@ -72,9 +74,10 @@ function render() {
   const t = targets(member);
   const { eaten, planned } = dayTotals(member.id, day, m);
   const list = entriesFor(member.id, day);
-  const left = t ? { kcal: t.kcal - planned.kcal, p: t.p - planned.p } : null;
+  const left = t ? { kcal: t.kcal - planned.kcal, p: t.p - planned.p, c: t.c - planned.c, f: t.f - planned.f } : null;
   const dayName = parseDay(day).toLocaleDateString('en-US', { weekday: 'long' });
   const shop = shoppingList(start);
+  const extra = (d.shopping || []).map((x) => ({ ...x, ing: m.ingById[x.ingredientId], recipe: m.recipeById[x.recipeId] })).filter((x) => x.ing);
   const rangeLabel = `${parseDay(start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${parseDay(addDays(start, 6)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
   return html`<main class="main" id="main">
 <header class="page-head"><div><h1>Meal plan</h1><p class="sub">Week of ${rangeLabel}</p></div>${memberChips(d.members, member.id, 'pick-member')}</header>
@@ -99,12 +102,28 @@ ${!list.length && entriesFor(member.id, addDays(day, -1)).length ? html`<button 
 <span class="bar thick" role="img" aria-label="${fmtInt(eaten.kcal)} calories eaten and ${fmtInt(planned.kcal)} planned of ${t ? fmtInt(t.kcal) : 'no target'}"><i class="fill-soft" style="width:${t ? Math.min(100, (planned.kcal / t.kcal) * 100).toFixed(1) : 0}%"></i><i class="fill-accent" style="width:${t ? Math.min(100, (eaten.kcal / t.kcal) * 100).toFixed(1) : 0}%"></i></span>
 <div class="row tiny muted" style="gap:14px"><span class="row" style="gap:5px"><span class="dot fill-accent"></span>Eaten</span><span class="row" style="gap:5px"><span class="dot fill-soft"></span>Planned</span></div>
 ${macroBars(eaten, t, true)}
-${left && left.kcal > 50 ? html`<a class="notice ok spread" href="#/suggested" style="text-decoration:none">${fmtInt(left.kcal)} kcal and ${fmtInt(Math.max(0, left.p))} g protein still to plan. See ideas ${icon('chevron', 18)}</a>` : ''}
+${left ? leftTiles(left, 'Still to plan') : ''}
+${left && left.kcal > 50 ? html`<a class="notice ok spread" href="#/suggested" style="text-decoration:none">Find recipes that fit what’s left ${icon('chevron', 18)}</a>` : ''}
 </section>
 <section class="card tight" aria-label="Shopping list"><h2>Shopping list for this week</h2>
 ${shop.length ? html`<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px">${shop.map((x) => html`<li class="spread small"><span>${x.ing.name}</span><span style="color:${x.why === 'staple' && x.text !== 'Out' ? 'var(--warn-text)' : 'var(--muted)'}">${x.text}${x.why === 'staple' ? ' · staple' : ''}</span></li>`)}</ul>` : html`<p class="small muted">Nothing to buy for the planned meals.</p>`}
+${extra.length ? html`<h3 class="small bold" style="margin-top:6px">Added from recipes</h3>
+<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">${extra.map((x) => html`<li class="row small" style="gap:8px"><span style="flex:1;min-width:0"><span class="bold">${x.ing.name}</span><span class="tiny muted" style="display:block">${fmtAmount(fromBase(x.base, x.ing.stockUnit), x.ing.stockUnit)}${x.recipe ? ` · for ${x.recipe.name}` : ''}</span></span>
+<button type="button" class="btn ghost" data-action="shop-bought" data-id="${x.id}" aria-label="Bought ${x.ing.name}: add it to stock">${icon('check', 16, 2.6)}Bought</button>
+<button type="button" class="icon-btn bare" data-action="shop-remove" data-id="${x.id}" aria-label="Remove ${x.ing.name} from the list">${icon('close', 16)}</button></li>`)}</ul>` : ''}
 </section></aside></div>
 </main>`;
+}
+
+/** What the member still has to plan for the day, after the item in the sheet. */
+function sheetLeft(preview) {
+  const member = currentMember();
+  const t = member && targets(member);
+  if (!t) return '';
+  const { planned } = dayTotals(member.id, ui.planDay || dayKey());
+  const n = preview || { kcal: 0, p: 0, c: 0, f: 0 };
+  const left = { kcal: t.kcal - planned.kcal - n.kcal, p: t.p - planned.p - n.p, c: t.c - planned.c - n.c, f: t.f - planned.f - n.f };
+  return leftTiles(left, preview ? `${member.name}’s day after adding this` : `${member.name} still has to plan`);
 }
 
 function addSheet(s) {
@@ -125,9 +144,10 @@ ${s.mode === 'recipe'
 <div class="spread"><span class="bold">Servings</span>${stepper(servingsText(s.servings), 'sheet-less', 'sheet-more', '', ['Fewer servings', 'More servings'])}</div>`
     : html`<label class="search">${icon('search')}<span class="sr-only">Search food</span><input type="search" placeholder="Search your ingredients" data-field="sheet-query" data-key="sheet-query" value="${s.query || ''}"></label>
 <div class="chips">${foods.map((i) => html`<button type="button" class="chip" data-action="sheet-food" data-id="${i.id}"${pressed(i.id === s.ingId)}>${i.name}</button>`)}</div>
-${ing ? html`<div class="row"><label class="field" style="flex:1">Amount<input class="input" type="number" inputmode="decimal" step="any" min="0" data-field="sheet-qty" data-key="sheet-qty" value="${s.qty}"></label>
-<label class="field" style="width:120px">Unit<select class="select" data-field="sheet-unit" data-key="sheet-unit">${unitsLike(ing.basis.unit).map((u) => html`<option${u === s.unit ? html` selected` : ''}>${u}</option>`)}</select></label></div>` : ''}`}
+${ing ? html`<div class="row"><label class="field" style="flex:1">Amount<input class="input" type="text" inputmode="decimal" autocomplete="off" data-field="sheet-qty" data-key="sheet-qty" value="${s.qty}"></label>
+<label class="field" style="width:120px">Unit<select class="select" data-field="sheet-unit" data-key="sheet-unit">${unitsFor(ing).map((u) => html`<option${u === s.unit ? html` selected` : ''}>${u}</option>`)}</select></label></div>` : ''}`}
 ${preview ? html`<p class="small muted num">${fmtInt(preview.kcal)} kcal · P ${fmtInt(preview.p)} · C ${fmtInt(preview.c)} · F ${fmtInt(preview.f)}</p>` : ''}
+${sheetLeft(preview)}
 <div class="spread"><span id="eaten-l" style="font-weight:600">Already eaten</span><button type="button" class="switch" role="switch" aria-labelledby="eaten-l" aria-checked="${s.eaten ? 'true' : 'false'}" data-action="sheet-eaten"></button></div>
 <div class="row"><button type="button" class="btn plain lg" data-action="close-sheet" style="flex:1">Cancel</button><button type="button" class="btn primary lg" data-action="sheet-add" style="flex:1"${(s.mode === 'recipe' ? s.recipeId : ing && parseFloat(s.qty) > 0) ? '' : html` disabled`}>${s.eaten ? 'Log it' : 'Add to plan'}</button></div>`;
 }
@@ -174,6 +194,26 @@ export const planView = {
       const removed = getData().entries.find((e) => e.id === ds.id);
       update((d) => { d.entries = d.entries.filter((e) => e.id !== ds.id); });
       toast(`Removed ${entryName(removed)}.`, () => update((d) => d.entries.push(removed)));
+    },
+    'shop-bought': ({ ds }) => {
+      const item = getData().shopping.find((x) => x.id === ds.id);
+      const ing = maps().ingById[item.ingredientId];
+      const before = ing.stock;
+      update((d) => {
+        d.shopping = d.shopping.filter((x) => x.id !== item.id);
+        const i = d.ingredients.find((x) => x.id === item.ingredientId);
+        i.stock = (i.stock || 0) + item.base;
+      });
+      toast(`Added ${ing.name} to your stock.`, () => update((d) => {
+        d.shopping.push(item);
+        const i = d.ingredients.find((x) => x.id === item.ingredientId);
+        if (i) i.stock = before;
+      }));
+    },
+    'shop-remove': ({ ds }) => {
+      const item = getData().shopping.find((x) => x.id === ds.id);
+      update((d) => { d.shopping = d.shopping.filter((x) => x.id !== item.id); });
+      toast('Removed from the shopping list.', () => update((d) => d.shopping.push(item)));
     },
     'plan-copy': () => {
       const member = currentMember();

@@ -36,12 +36,30 @@ export function sum(list) {
   return list.reduce(add, { ...ZERO });
 }
 
+/**
+ * An amount in the ingredient's own base unit (g, ml or each, matching its nutrition unit).
+ * Other kinds convert through `ing.convert` ([{unit, qty, base}]: qty unit = base units), else NaN.
+ */
+export function baseAmount(ing, qty, unit) {
+  const k = kindOf(unit);
+  if (!ing || !k) return NaN;
+  if (k === kindOf(ing.basis.unit)) return toBase(qty, unit);
+  const c = (ing.convert || []).find((x) => kindOf(x.unit) === k && x.qty > 0);
+  return c ? (toBase(qty, unit) / toBase(c.qty, c.unit)) * c.base : NaN;
+}
+/** Units an ingredient can be measured in. */
+export function unitsFor(ing) {
+  const kinds = [kindOf(ing.basis.unit), ...(ing.convert || []).map((c) => kindOf(c.unit))];
+  return [...new Set(kinds)].filter(Boolean).flatMap((k) => Object.keys(UNITS[k]));
+}
+
 /** Nutrition for an amount of an ingredient, or null when the unit can't be converted. */
 export function nutrientsFor(ing, qty, unit) {
-  if (!ing || kindOf(unit) !== kindOf(ing.basis.unit)) return null;
+  if (!ing) return null;
   const basisBase = toBase(ing.basis.qty, ing.basis.unit);
-  if (!(basisBase > 0)) return null;
-  return scale(ing.per, toBase(qty, unit) / basisBase);
+  const amount = baseAmount(ing, qty, unit);
+  if (!(basisBase > 0) || !Number.isFinite(amount)) return null;
+  return scale(ing.per, amount / basisBase);
 }
 
 export function stockIn(ing, unit = ing.stockUnit) {
@@ -71,8 +89,8 @@ export function stockNeeds(recipe, servings, ingById) {
   const k = servings / (recipe.servings > 0 ? recipe.servings : 1);
   return recipe.items.map((item) => {
     const ing = ingById[item.ingredientId];
-    const compatible = ing && kindOf(item.unit) === kindOf(ing.basis.unit);
-    const need = toBase(item.qty, item.unit) * k;
+    const need = baseAmount(ing, item.qty, item.unit) * k;
+    const compatible = Number.isFinite(need);
     const have = ing ? ing.stock : 0;
     return { item, ing, need, have, after: have - need, short: !compatible || have + 1e-9 < need };
   });

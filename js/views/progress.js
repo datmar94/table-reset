@@ -92,7 +92,7 @@ function weightSheet(sheet) {
   if (!member) return '';
   const unit = member.units === 'metric' ? 'kg' : 'lb';
   return html`<h2 id="sheet-title">Log ${member.name}’s weight</h2>
-<label class="field">Weight today (${unit})<input class="input" type="number" inputmode="decimal" step="0.1" data-field="weight-value" data-key="weight-value" value="${sheet.value}" autofocus></label>
+<label class="field">Weight today (${unit})<input class="input" type="text" inputmode="decimal" autocomplete="off" data-field="weight-value" data-key="weight-value" value="${sheet.value}" autofocus></label>
 ${sheet.error ? html`<p class="notice warn" role="alert">${sheet.error}</p>` : ''}
 <div class="row"><button type="button" class="btn plain lg" data-action="close-sheet" style="flex:1">Cancel</button><button type="button" class="btn primary lg" data-action="save-weight" style="flex:1">Save</button></div>`;
 }

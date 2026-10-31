@@ -44,6 +44,7 @@ function detail(r, m) {
 <div class="spread" style="align-items:flex-start"><div><h2 style="font-size:24px;font-weight:800;letter-spacing:-0.02em">${r.name}</h2>
 <p class="small muted">${r.minutes || '—'} min${r.meals.length ? ' · ' + r.meals.map(cap).join(', ') : ''} · recipe makes ${servingsText(r.servings)}</p></div>
 <a class="icon-btn" href="#/recipes/${r.id}/edit" aria-label="Edit ${r.name}">${icon('edit', 20)}</a></div>
+${r.items.some((it) => (m.ingById[it.ingredientId] || {}).needsNutrition) ? html`<p class="notice warn">Some new foods from the import don’t have nutrition yet (${r.items.map((it) => m.ingById[it.ingredientId]).filter((i) => i && i.needsNutrition).map((i) => i.name).join(', ')}), so the numbers leave them out. Open each one in Ingredients and tap Look up nutrition.</p>` : ''}
 ${missing.length ? html`<p class="notice warn">${missing.length} ingredient${missing.length === 1 ? ' is' : 's are'} missing from your list, so the numbers leave ${missing.length === 1 ? 'it' : 'them'} out. Edit the recipe to fix this.</p>` : ''}
 <div class="cols" style="gap:16px">
 <section class="card col-main" style="flex-direction:row;align-items:center;gap:18px" aria-label="Nutrition per serving">${donut(perServing)}
@@ -52,7 +53,8 @@ ${missing.length ? html`<p class="notice warn">${missing.length} ingredient${mis
 <div class="spread"><span class="row" style="gap:8px"><span class="dot fill-carbs"></span>Carbs</span><span><strong class="num">${fmtInt(perServing.c)} g</strong> <span class="muted small">${split.c}%</span></span></div>
 <div class="spread"><span class="row" style="gap:8px"><span class="dot fill-fat"></span>Fat</span><span><strong class="num">${fmtInt(perServing.f)} g</strong> <span class="muted small">${split.f}%</span></span></div></div></section>
 <section class="card col-side tight"><span class="bold">Cook</span>${stepper(servingsText(cook), 'cook-less', 'cook-more', ` data-id="${r.id}"`, ['Fewer servings', 'More servings'])}
-<span class="tiny muted">${shorts ? `${shorts} item${shorts === 1 ? ' is' : 's are'} short for this many servings.` : 'You have everything for this many servings.'}</span></section></div>
+<span class="tiny muted">${shorts ? `${shorts} item${shorts === 1 ? ' is' : 's are'} short for this many servings.` : 'You have everything for this many servings.'}</span>
+${shorts ? html`<button type="button" class="btn outline" data-action="shop-add-missing" data-id="${r.id}">${icon('list', 18)}Add missing to shopping list</button>` : ''}</section></div>
 <section class="card"><div class="spread"><h2>Ingredients for ${servingsText(cook)}</h2><span class="small muted">Cooking takes these out of stock</span></div>
 <div class="table-wrap"><table class="table"><thead><tr><th scope="col">Ingredient</th><th scope="col">Uses</th><th scope="col">kcal</th><th scope="col" style="text-align:right">In stock → after</th></tr></thead><tbody>
 ${needs.map((x) => {
@@ -60,7 +62,7 @@ ${needs.map((x) => {
     const k = cook / r.servings;
     const kcal = x.ing ? recipeNutrition({ servings: 1, items: [x.item] }, m.ingById).total.kcal * k : 0;
     return html`<tr><th scope="row" style="font-weight:600">${x.ing ? x.ing.name : 'Deleted ingredient'}</th><td>${fmtAmount(x.item.qty * k, x.item.unit)}</td><td class="num">${fmtInt(kcal)}</td>
-<td style="text-align:right">${!x.ing ? html`<span class="badge warn">Not in your list</span>` : x.short ? html`<span class="badge warn">${x.have > 0 ? `Short by ${fmtAmount(fromBase(x.need - x.have, unit), unit)}` : 'Out of stock'}</span>` : html`<span class="num">${fmtAmount(fromBase(x.have, unit), unit)} → <strong>${fmtAmount(fromBase(x.after, unit), unit)}</strong></span>`}</td></tr>`;
+<td style="text-align:right">${!x.ing ? html`<span class="badge warn">Not in your list</span>` : !Number.isFinite(x.need) ? html`<span class="badge warn">Unit doesn’t match</span>` : x.short ? html`<span class="badge warn">${x.have > 0 ? `Short by ${fmtAmount(fromBase(x.need - x.have, unit), unit)}` : 'Out of stock'}</span>` : html`<span class="num">${fmtAmount(fromBase(x.have, unit), unit)} → <strong>${fmtAmount(fromBase(x.after, unit), unit)}</strong></span>`}</td></tr>`;
   })}</tbody></table></div></section>
 ${r.steps && r.steps.length ? html`<section class="card"><h2>Steps</h2><ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;line-height:1.5">${r.steps.map((s) => html`<li>${s}</li>`)}</ol></section>` : ''}
 <div class="row wrap"><button type="button" class="btn primary lg" style="flex:1" data-action="cook" data-id="${r.id}">Cook ${servingsText(cook)} & update stock</button>
@@ -148,7 +150,7 @@ export const recipesView = {
       const before = {};
       update((d) => {
         for (const x of stockNeeds(r, servings, m.ingById)) {
-          if (!x.ing) continue;
+          if (!x.ing || !Number.isFinite(x.need)) continue;
           const ing = d.ingredients.find((i) => i.id === x.ing.id);
           if (!(ing.id in before)) before[ing.id] = ing.stock;
           ing.stock = Math.max(0, ing.stock - x.need);
@@ -157,6 +159,19 @@ export const recipesView = {
       toast(`Cooked ${servingsText(servings)} of ${r.name}. Stock updated.`, () => update((d) => {
         for (const [iid, stock] of Object.entries(before)) { const ing = d.ingredients.find((i) => i.id === iid); if (ing) ing.stock = stock; }
       }));
+    },
+    'shop-add-missing': ({ ds }) => {
+      const m = maps();
+      const r = m.recipeById[ds.id];
+      const servings = (ui.cookServings || {})[r.id] || r.servings;
+      const adds = stockNeeds(r, servings, m.ingById)
+        .filter((x) => x.short && x.ing && Number.isFinite(x.need))
+        .map((x) => ({ id: uid(), ingredientId: x.ing.id, base: x.need - Math.max(0, x.have), recipeId: r.id }));
+      update((d) => {
+        d.shopping = d.shopping.filter((s) => !(s.recipeId === r.id && adds.some((a) => a.ingredientId === s.ingredientId)));
+        d.shopping.push(...adds);
+      });
+      toast(`Added ${adds.length} item${adds.length === 1 ? '' : 's'} to the shopping list on the Meal plan tab.`);
     },
     'log-recipe': ({ ds }) => {
       const r = maps().recipeById[ds.id];
