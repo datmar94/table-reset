@@ -2,7 +2,8 @@
 import { addDays, fmtNum, goalDate, macroSplit, nutrientsFor, recipeNutrition, stockNeeds, stockStatus, targets, toBase, weekStart, LB_PER_KG } from '../js/nutrition.js';
 import { parseLine, matchIngredient, bestHit, newFood } from '../js/views/recipeEdit.js';
 import { buildFood, offProduct, portionUnit, servingPortion, usdaHit, usdaPortions } from '../js/foods.js';
-import { baseAmount, unitsFor } from '../js/nutrition.js';
+import { baseAmount, unitsFor, amountAs, stockAmount, withMeasures, measureAsk, withSwaps, startAmount, cupWeight, fmtAmount } from '../js/nutrition.js';
+import { guessCategory, categoryOf, migrateCategories, sizePreset } from '../js/kitchen.js';
 import { sampleData } from '../js/seed.js';
 import { byId } from '../js/store.js';
 import { shoppingRows } from '../js/views/shopping.js';
@@ -112,7 +113,7 @@ test('Ingredient lines are parsed', () => {
 test('Lines match the right ingredient', () => {
   const ings = sampleData('2026-10-26').ingredients;
   eq(matchIngredient('olive oil', ings).name, 'Olive oil');
-  eq(matchIngredient('large eggs, beaten', ings).name, 'Large eggs');
+  eq(matchIngredient('large eggs, beaten', ings).name, 'Eggs');
   eq(matchIngredient('chopped broccoli florets', ings).name, 'Broccoli, chopped');
   eq(matchIngredient('salmon fillets', ings), null);
 });
@@ -233,6 +234,98 @@ test('Sync sends only changed records and merges other devices’ changes', () =
   const both = combine(mine, docs);
   eq(both.ingredients.map((x) => x.name).join(','), 'Rice,My oats,Eggs');
   eq(Object.keys(itemsOf(both)).length, 5);
+});
+
+test('Foods are sorted into groups by name', () => {
+  const cases = {
+    'Chicken breast, raw': 'Meat & seafood', 'Large eggs': 'Eggs & dairy', 'Greek yogurt, nonfat': 'Eggs & dairy', 'Sweet potatoes': 'Vegetables',
+    Blueberries: 'Fruit', 'Brown rice, cooked': 'Bread, grains & pasta', 'Peanut butter': 'Beans, nuts & seeds', 'Olive oil': 'Oils, sauces & condiments',
+    'Garlic powder': 'Spices & seasonings', Garlic: 'Vegetables', 'Black pepper': 'Spices & seasonings', 'Bell peppers': 'Vegetables', Pepperoni: 'Meat & seafood',
+    'Chicken broth': 'Canned & jarred', 'Frozen peas': 'Frozen', Honey: 'Baking & sweeteners', 'Chocolate chips': 'Baking & sweeteners', 'Tortilla chips': 'Snacks',
+    'Pizza dough': 'Bread, grains & pasta', 'Shredded mozzarella': 'Eggs & dairy', 'Almond milk': 'Eggs & dairy', 'Tomatoes': 'Vegetables',
+  };
+  for (const [name, cat] of Object.entries(cases)) eq(guessCategory(name), cat, name);
+  eq(guessCategory('Mystery mix'), null);
+  eq(categoryOf({ name: 'Blueberries', category: 'Produce' }), 'Fruit', 'old group, name decides');
+  eq(categoryOf({ name: 'Mystery mix', category: 'Pantry' }), 'Oils, sauces & condiments', 'old group, name says nothing');
+  eq(categoryOf({ name: 'Blueberries', category: 'Snacks' }), 'Snacks', 'a chosen group stays');
+  const d = { settings: {}, ingredients: [{ name: 'Honey', category: 'Other' }, { name: 'Salmon', category: 'Proteins' }, { name: 'Odd thing', category: 'Other' }, { name: 'Apples', category: 'Drinks' }] };
+  migrateCategories(d);
+  eq(d.ingredients.map((x) => x.category).join('|'), 'Baking & sweeteners|Meat & seafood|Other|Drinks');
+  eq(migrateCategories(d), false, 'runs once');
+});
+
+const eggs = { name: 'Eggs', basis: { qty: 1, unit: 'each' }, per: { kcal: 72, p: 6.3, c: 0.4, f: 4.8 }, sizes: sizePreset('eggs').sizes, stock: 12, stockUnit: 'each' };
+test('Egg sizes: pick a size and how many', () => {
+  eq(unitsFor(eggs).slice(0, 5).join(','), 'Small,Medium,Large,Extra large,Jumbo');
+  near(nutrientsFor(eggs, 2, 'Large').kcal, 144, 0.01, 'nutrition is for one large egg');
+  near(nutrientsFor(eggs, 2, 'Jumbo').kcal, 72 * 2 * 63 / 50, 0.01, 'jumbo eggs weigh more');
+  near(nutrientsFor(eggs, 100, 'g').kcal, 144, 0.01, '100 g is two large eggs');
+  eq(stockAmount(eggs, 2, 'Jumbo'), 2, 'two jumbo eggs are still two eggs');
+  const r = { servings: 1, items: [{ ingredientId: 'e', qty: 3, unit: 'Medium' }] };
+  eq(stockNeeds(r, 1, { e: eggs })[0].need, 3);
+  eq(fmtAmount(2, 'Large'), '2 large');
+  eq(fmtAmount(3, 'Clove'), '3 cloves');
+  eq(startAmount(eggs).unit, 'Large', 'recipes start with the usual size');
+});
+test('A food weighed per 100 g can be counted in pieces', () => {
+  const onion = { name: 'Onion', basis: { qty: 100, unit: 'g' }, per: { kcal: 40, p: 1.1, c: 9.3, f: 0.1 }, sizes: sizePreset('onion').sizes, stock: 3, stockUnit: 'each' };
+  near(nutrientsFor(onion, 1, 'Large').kcal, 60, 0.01);
+  near(baseAmount(onion, 2, 'each'), 220, 0.01, 'each is the usual (medium) size');
+  near(stockAmount(onion, 165, 'g'), 1.5, 0.001, 'grams in a recipe come off the count');
+  eq(stockAmount(onion, 1, 'Large'), 1);
+});
+test('Saying what 1 cup weighs lets recipes use cups and spoons', () => {
+  const flour = { name: 'Flour', basis: { qty: 100, unit: 'g' }, per: { kcal: 364, p: 10, c: 76, f: 1 }, convert: [] };
+  eq(measureAsk(flour, 'cup'), 'cup');
+  eq(measureAsk(flour, 'g'), null);
+  const f2 = { ...flour, convert: withMeasures(flour, 125, undefined) };
+  near(baseAmount(f2, 2, 'tbsp'), 125 / 8, 0.01, '2 tbsp');
+  near(cupWeight(f2), 125, 1e-9);
+  eq(unitsFor(f2).includes('tsp'), true);
+  eq(withMeasures(f2, 0, undefined).length, 0, 'clearing it removes it');
+  // Milk is per cup: its cup weight lets recipes use grams.
+  const milk = { basis: { qty: 1, unit: 'cup' }, per: { kcal: 122, p: 8, c: 12, f: 5 }, convert: [] };
+  eq(measureAsk(milk, 'g'), 'cup');
+  const m2 = { ...milk, convert: withMeasures(milk, 244, undefined) };
+  near(nutrientsFor(m2, 244, 'g').kcal, 122, 0.01);
+  // Tortillas are per piece: one's weight, then a cup of them.
+  const tort = { basis: { qty: 1, unit: 'each' }, per: { kcal: 140, p: 4, c: 24, f: 3 }, convert: [] };
+  eq(measureAsk(tort, 'cup'), 'piece', 'needs a weight before cups');
+  const t2 = { ...tort, convert: withMeasures(tort, 90, 45) };
+  near(baseAmount(t2, 1, 'cup'), 2, 1e-9, 'a 90 g cup is two 45 g tortillas');
+  near(nutrientsFor(t2, 90, 'g').kcal, 280, 0.01);
+});
+test('Stock can be kept in a different kind of unit', () => {
+  const rice = { basis: { qty: 100, unit: 'g' }, per: { kcal: 360, p: 7, c: 80, f: 1 }, convert: [{ unit: 'cup', qty: 1, base: 185 }], stock: 4 * 236.588, stockUnit: 'cup' };
+  near(stockAmount(rice, 185, 'g'), 236.588, 0.01, '185 g is one cup off the stock');
+  near(amountAs(rice, 1, 'cup', 'mass'), 185, 0.01);
+});
+test('Swaps change the recipe for this time only', () => {
+  const ing = { p: { basis: { qty: 1, unit: 'oz' }, per: { kcal: 140, p: 6, c: 0, f: 12 } }, m: { basis: { qty: 1, unit: 'cup' }, per: { kcal: 15, p: 2, c: 2, f: 0 } }, d: { basis: { qty: 100, unit: 'g' }, per: { kcal: 250, p: 8, c: 50, f: 2 } } };
+  const pizza = { servings: 2, items: [{ ingredientId: 'd', qty: 300, unit: 'g' }, { ingredientId: 'p', qty: 2, unit: 'oz', alts: [{ ingredientId: 'm', qty: 1, unit: 'cup' }] }] };
+  eq(recipeNutrition(pizza, ing).total.kcal, 750 + 280);
+  eq(recipeNutrition(withSwaps(pizza, { p: { ingredientId: 'm', qty: 1, unit: 'cup' } }), ing).total.kcal, 750 + 15, 'mushrooms instead');
+  eq(recipeNutrition(withSwaps(pizza, { p: null }), ing).total.kcal, 750, 'left out');
+  eq(withSwaps(pizza, {}), pizza, 'no swaps, same recipe');
+  eq(pizza.items.length, 2, 'the recipe itself is unchanged');
+});
+test('Planned meals with swaps shop for the swap', () => {
+  const d = sampleData('2026-11-02');
+  d.entries = [];
+  d.shopping = [];
+  const skillet = d.recipes.find((r) => r.name.startsWith('Turkey'));
+  const chicken = d.ingredients.find((i) => i.name.startsWith('Chicken'));
+  const turkey = d.ingredients.find((i) => i.name.startsWith('Ground turkey'));
+  chicken.stock = 0;
+  turkey.stock = 0;
+  turkey.staple = false;
+  chicken.staple = false;
+  d.entries.push({ id: 'x', date: '2026-11-02', memberId: 'm', slot: 'dinner', kind: 'recipe', recipeId: skillet.id, servings: 4, eaten: false, swaps: { [turkey.id]: { ingredientId: chicken.id, qty: 400, unit: 'g' } } });
+  const rows = shoppingRows(d, '2026-11-02');
+  eq(rows.some((r) => r.ing.id === chicken.id), true, 'chicken on the list');
+  eq(rows.some((r) => r.ing.id === turkey.id), false, 'turkey not on the list');
+  near(rows.find((r) => r.ing.id === chicken.id).buy, 400, 0.01);
 });
 
 const out = document.getElementById('out');

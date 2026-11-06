@@ -1,11 +1,12 @@
 // App data lives in this browser, and sync.js copies it to Firebase when sync is on. Household data
 // (members, food, recipes, log) is kept apart from device settings (appearance), which never sync.
+import { migrateCategories } from './kitchen.js';
 
 const DATA_KEY = 'mealmacros.data.v1';
 const DEVICE_KEY = 'mealmacros.device.v1';
 
 export function emptyData() {
-  return { version: 1, settings: { defaultUnits: 'imperial' }, members: [], ingredients: [], recipes: [], entries: [], shopping: [] };
+  return { version: 1, settings: { defaultUnits: 'imperial', groups: 2 }, members: [], ingredients: [], recipes: [], entries: [], shopping: [] };
 }
 
 function read(key) {
@@ -34,6 +35,7 @@ function normalize(d) {
   if (!d || typeof d !== 'object' || d.version !== 1) return null;
   const base = emptyData();
   for (const k of Object.keys(base)) if (!(k in d)) d[k] = base[k];
+  migrateCategories(d);
   return d;
 }
 

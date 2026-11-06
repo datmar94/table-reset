@@ -21,6 +21,7 @@ ${list.length ? html`<ul class="list">${list.map((e) => {
 <button type="button" class="check" data-action="toggle-eaten" data-id="${e.id}"${pressed(!!e.eaten)} aria-label="${entryName(e, m)} eaten"><span>${icon('check', 16, 3)}</span></button>
 <div class="grow">${e.kind === 'recipe' && m.recipeById[e.recipeId] ? html`<a class="title" href="#/recipes/${e.recipeId}" style="color:inherit;text-decoration:none">${entryName(e, m)}</a>` : html`<span class="title">${entryName(e, m)}</span>`}
 <span class="meta num"><span class="nw">${entryQty(e)}</span> · <span class="nw">${fmtInt(n.kcal)} kcal</span> · <span class="nw">P ${fmtInt(n.p)}</span> · <span class="nw">C ${fmtInt(n.c)}</span> · <span class="nw">F ${fmtInt(n.f)}</span>${e.eaten ? html` · <strong style="color:var(--accent-text)">Eaten</strong>` : ''}</span>
+${swapText(e, m)}
 ${shared.length ? html`<span class="tiny" style="font-weight:600;color:var(--accent-strong)">Also on ${shared.map((x) => (m.memberById[x.memberId] || {}).name).filter(Boolean).join(' and ')}’s plan</span>` : ''}</div>
 <button type="button" class="icon-btn bare" data-action="entry-remove" data-id="${e.id}" aria-label="Remove ${entryName(e, m)}">${icon('trash', 18)}</button></li>`;
   })}</ul>` : html`<p class="empty" style="padding:12px 14px">Nothing planned.</p>`}
@@ -107,6 +108,13 @@ ${preview ? html`<p class="small muted num">${fmtInt(preview.kcal)} kcal · P ${
 ${sheetLeft(preview)}
 <div class="spread"><span id="eaten-l" style="font-weight:600">Already eaten</span><button type="button" class="switch" role="switch" aria-labelledby="eaten-l" aria-checked="${s.eaten ? 'true' : 'false'}" data-action="sheet-eaten"></button></div>
 <div class="row"><button type="button" class="btn plain lg" data-action="close-sheet" style="flex:1">Cancel</button><button type="button" class="btn primary lg" data-action="sheet-add" style="flex:1"${(s.mode === 'recipe' ? s.recipeId : ing && parseFloat(s.qty) > 0) ? '' : html` disabled`}>${s.eaten ? 'Log it' : 'Add to plan'}</button></div>`;
+}
+
+/** "Chicken instead of turkey · no spinach" for a recipe cooked with swaps. */
+function swapText(e, m) {
+  const name = (id) => ((m.ingById[id] || {}).name || 'a deleted food').split(',')[0].toLowerCase();
+  const parts = Object.entries(e.swaps || {}).map(([from, to]) => (to ? `${name(to.ingredientId)} instead of ${name(from)}` : `no ${name(from)}`));
+  return parts.length ? html`<span class="tiny muted">With ${parts.join(' · ')}</span>` : '';
 }
 
 export const planView = {

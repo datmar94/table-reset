@@ -1,6 +1,6 @@
 // Shared UI state, navigation and data selectors used by every screen.
 import { getData, byId } from './store.js';
-import { add, dayKey, nutrientsFor, recipeNutrition, scale, sum, targets, ZERO } from './nutrition.js';
+import { add, dayKey, nutrientsFor, recipeNutrition, scale, sum, targets, withSwaps, ZERO } from './nutrition.js';
 
 /** Screen state that isn't saved (filters, drafts, open sheets). */
 export const ui = {
@@ -56,7 +56,7 @@ export function currentMember() {
 export function entryNutrition(entry, m = maps()) {
   if (entry.snap) return entry.snap;
   if (entry.kind === 'recipe') {
-    const r = m.recipeById[entry.recipeId];
+    const r = withSwaps(m.recipeById[entry.recipeId], entry.swaps);
     return r ? scale(recipeNutrition(r, m.ingById).perServing, entry.servings) : { ...ZERO };
   }
   return nutrientsFor(m.ingById[entry.ingredientId], entry.qty, entry.unit) || { ...ZERO };

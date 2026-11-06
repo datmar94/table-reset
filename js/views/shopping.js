@@ -1,8 +1,8 @@
 import { getData, update, uid, byId } from '../store.js';
 import { ui, maps, openSheet, closeSheet, toast, refresh } from '../app.js';
-import { addDays, baseAmount, dayKey, fmtAmount, fromBase, kindOf, stockStatus, toBase, unitsFor } from '../nutrition.js';
+import { addDays, dayKey, fmtAmount, fromBase, kindOf, stockAmount, stockStatus, toBase, unitsFor, withSwaps } from '../nutrition.js';
 import { html, icon, pressed } from '../ui.js';
-import { CATEGORIES } from './ingredients.js';
+import { CATEGORIES, categoryOf } from '../kitchen.js';
 
 /** How much of each food the meals planned (and not yet eaten) from `fromKey` for 7 days use, in base units. */
 function plannedNeeds(d, fromKey, ingById, recipeById) {
@@ -11,14 +11,14 @@ function plannedNeeds(d, fromKey, ingById, recipeById) {
   for (const e of d.entries) {
     if (e.eaten || e.date < fromKey || e.date > end) continue;
     if (e.kind === 'recipe') {
-      const r = recipeById[e.recipeId];
+      const r = withSwaps(recipeById[e.recipeId], e.swaps);
       if (!r) continue;
       for (const it of r.items) {
-        const base = baseAmount(ingById[it.ingredientId], it.qty, it.unit);
+        const base = stockAmount(ingById[it.ingredientId], it.qty, it.unit);
         if (Number.isFinite(base)) need[it.ingredientId] = (need[it.ingredientId] || 0) + (base * e.servings) / r.servings;
       }
     } else {
-      const base = baseAmount(ingById[e.ingredientId], e.qty, e.unit);
+      const base = stockAmount(ingById[e.ingredientId], e.qty, e.unit);
       if (Number.isFinite(base)) need[e.ingredientId] = (need[e.ingredientId] || 0) + base;
     }
   }
@@ -91,7 +91,7 @@ ${r.itemIds.length && !r.short ? html`<button type="button" class="icon-btn bare
 function render() {
   const d = getData();
   const rows = shoppingRows(d, dayKey());
-  const groups = CATEGORIES.map((c) => [c, rows.filter((r) => (CATEGORIES.includes(r.ing.category) ? r.ing.category : 'Other') === c)]).filter((g) => g[1].length);
+  const groups = CATEGORIES.map((c) => [c, rows.filter((r) => categoryOf(r.ing) === c)]).filter((g) => g[1].length);
   const done = ui.bought || [];
   return html`<main class="main" id="main">
 <header class="page-head"><div><h1>Shopping list</h1><p class="sub">Tap the circle as each item goes in the cart. It’s added to your stock.</p></div>
@@ -176,7 +176,7 @@ export const shoppingView = {
     'shop-add-save': () => {
       const s = ui.sheet;
       const ing = maps().ingById[s.ingId];
-      const base = baseAmount(ing, parseFloat(s.qty), s.unit);
+      const base = stockAmount(ing, parseFloat(s.qty), s.unit);
       if (!(base > 0)) return;
       closeSheet();
       if (s.ask) { addToCart(ing, base); return; }

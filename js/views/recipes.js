@@ -1,7 +1,8 @@
 import { getData, update, uid } from '../store.js';
 import { ui, go, maps, openSheet, closeSheet, toast, refresh } from '../app.js';
-import { addDays, dayKey, fmtAmount, fmtInt, fromBase, macroSplit, parseDay, recipeNutrition, scale, shortCount, stockNeeds, weekStart } from '../nutrition.js';
+import { addDays, dayKey, fmtAmount, fmtInt, fromBase, macroSplit, parseDay, recipeNutrition, scale, shortCount, startAmount, stockNeeds, unitsFor, weekStart, withSwaps } from '../nutrition.js';
 import { html, icon, pressed, splitBar, stepper, memberChips, seg, SLOTS, servingsText } from '../ui.js';
+import { foodPicker, unitOptions } from './ingredients.js';
 
 const FILTERS = [['all', 'All'], ['ready', 'Can make now'], ['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snack']];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -34,7 +35,42 @@ function donut(n) {
 <div class="center" aria-hidden="true"><strong class="num" style="font-size:22px">${fmtInt(n.kcal)}</strong><span>kcal</span></div></div>`;
 }
 
-function detail(r, m) {
+/** Swaps picked for this time on a recipe: { ingredientId: item, or null when left out }. */
+const swapsFor = (id) => (ui.swaps || {})[id] || {};
+/** The recipe as it will be cooked, with this time's swaps. */
+const asCooked = (r) => withSwaps(r, swapsFor(r.id));
+const swapCopy = (id) => (Object.keys(swapsFor(id)).length ? { ...swapsFor(id) } : undefined);
+
+function ingLine(x, k, m, note = '', action = '') {
+  const unit = x.ing ? x.ing.stockUnit : x.item.unit;
+  const kcal = x.ing ? recipeNutrition({ servings: 1, items: [x.item] }, m.ingById).total.kcal * k : 0;
+  return html`<div class="spread" style="align-items:flex-start"><span class="bold">${x.ing ? x.ing.name : 'Deleted ingredient'}</span><span class="num bold nw">${fmtAmount(x.item.qty * k, x.item.unit)}</span></div>
+${note}
+<div class="spread small"><span class="row" style="gap:10px"><span class="muted num">${fmtInt(kcal)} kcal</span>${action}</span>${!x.ing ? html`<span class="badge warn">Not in your list</span>` : !Number.isFinite(x.need) ? html`<span class="badge warn">Unit doesn’t match</span>` : x.short ? html`<span class="badge warn">${x.have > 0 ? `Short by ${fmtAmount(fromBase(x.need - x.have, unit), unit)}` : 'Out of stock'}</span>` : html`<span class="muted num">In stock ${fmtAmount(fromBase(x.have, unit), unit)} → <strong style="color:var(--ink)">${fmtAmount(fromBase(x.after, unit), unit)}</strong></span>`}</div>`;
+}
+
+/** One ingredient on the recipe page: as written, swapped for this time, or left out. */
+function cookLine(r, it, cook, m) {
+  const swaps = swapsFor(r.id);
+  const k = cook / r.servings;
+  const orig = m.ingById[it.ingredientId];
+  const origName = orig ? orig.name : 'Deleted ingredient';
+  const undo = html`<button type="button" class="link-btn" data-action="swap-undo" data-id="${r.id}" data-from="${it.ingredientId}">Undo</button>`;
+  if (it.ingredientId in swaps && !swaps[it.ingredientId]) {
+    return html`<li class="swapped"><div class="spread"><span class="bold" style="text-decoration:line-through;color:var(--muted)">${origName}</span>${undo}</div><span class="small muted">Left out this time</span></li>`;
+  }
+  const item = it.ingredientId in swaps ? swaps[it.ingredientId] : it;
+  const x = stockNeeds({ servings: r.servings, items: [item] }, cook, m.ingById)[0];
+  if (item !== it) return html`<li class="swapped">${ingLine(x, k, m, html`<div class="spread small"><span class="muted">Instead of ${origName.toLowerCase()}</span>${undo}</div>`)}</li>`;
+  const alts = (it.alts || []).filter((a) => m.ingById[a.ingredientId]);
+  const open = orig ? html`<button type="button" class="link-btn sm" data-action="swap-open" data-id="${r.id}" data-from="${it.ingredientId}" aria-label="Swap or leave out ${origName}">${icon('swap', 14)}${alts.length ? 'More' : 'Swap'}</button>` : '';
+  return html`<li>${ingLine(x, k, m, '', open)}
+${alts.length ? html`<div class="chips swap-chips"><span class="tiny muted" style="align-self:center">Or use</span>${alts.map((a, j) => html`<button type="button" class="chip sm" data-action="swap-use" data-id="${r.id}" data-from="${it.ingredientId}" data-alt="${j}" aria-label="Use ${m.ingById[a.ingredientId].name} instead of ${origName}">${m.ingById[a.ingredientId].name}</button>`)}</div>` : ''}</li>`;
+}
+
+function detail(base, m) {
+  const r = asCooked(base);
+  const changed = Object.keys(swapsFor(base.id)).length;
   const { perServing, missing } = recipeNutrition(r, m.ingById);
   const cook = (ui.cookServings || {})[r.id] || r.servings;
   const needs = stockNeeds(r, cook, m.ingById);
@@ -55,14 +91,9 @@ ${missing.length ? html`<p class="notice warn">${missing.length} ingredient${mis
 <section class="card col-side tight"><span class="bold">Cook</span>${stepper(servingsText(cook), 'cook-less', 'cook-more', ` data-id="${r.id}"`, ['Fewer servings', 'More servings'])}
 <span class="tiny muted">${shorts ? `${shorts} item${shorts === 1 ? ' is' : 's are'} short for this many servings.` : 'You have everything for this many servings.'}</span>
 ${shorts ? html`<button type="button" class="btn outline" data-action="shop-add-missing" data-id="${r.id}">${icon('list', 18)}Add missing to shopping list</button>` : ''}</section></div>
-<section class="card"><div><h2>Ingredients for ${servingsText(cook)}</h2><span class="small muted">Cooking takes these out of stock</span></div>
-<ul class="ing-lines">${needs.map((x) => {
-    const unit = x.ing ? x.ing.stockUnit : x.item.unit;
-    const k = cook / r.servings;
-    const kcal = x.ing ? recipeNutrition({ servings: 1, items: [x.item] }, m.ingById).total.kcal * k : 0;
-    return html`<li><div class="spread" style="align-items:flex-start"><span class="bold">${x.ing ? x.ing.name : 'Deleted ingredient'}</span><span class="num bold nw">${fmtAmount(x.item.qty * k, x.item.unit)}</span></div>
-<div class="spread small"><span class="muted num">${fmtInt(kcal)} kcal</span>${!x.ing ? html`<span class="badge warn">Not in your list</span>` : !Number.isFinite(x.need) ? html`<span class="badge warn">Unit doesn’t match</span>` : x.short ? html`<span class="badge warn">${x.have > 0 ? `Short by ${fmtAmount(fromBase(x.need - x.have, unit), unit)}` : 'Out of stock'}</span>` : html`<span class="muted num">In stock ${fmtAmount(fromBase(x.have, unit), unit)} → <strong style="color:var(--ink)">${fmtAmount(fromBase(x.after, unit), unit)}</strong></span>`}</div></li>`;
-  })}</ul></section>
+<section class="card"><div><h2>Ingredients for ${servingsText(cook)}</h2><span class="small muted">Cooking takes these out of stock. Tap Swap to change an ingredient this time.</span></div>
+${changed ? html`<div class="notice ok spread" role="status"><span>${changed} change${changed === 1 ? '' : 's'} for this time. The numbers, cooking, logging and planning use ${changed === 1 ? 'it' : 'them'}.</span><button type="button" class="link-btn" data-action="swap-reset" data-id="${r.id}">Undo all</button></div>` : ''}
+<ul class="ing-lines">${base.items.map((it) => cookLine(base, it, cook, m))}</ul></section>
 ${r.steps && r.steps.length ? html`<section class="card"><h2>Steps</h2><ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;line-height:1.5">${r.steps.map((s) => html`<li>${s}</li>`)}</ol></section>` : ''}
 <div class="action-bar"><button type="button" class="btn plain lg" data-action="plan-recipe" data-id="${r.id}">Add to plan</button>
 <button type="button" class="btn outline lg" data-action="log-recipe" data-id="${r.id}">Log a serving</button>
@@ -103,6 +134,39 @@ function addSheet() {
 <button type="button" class="btn ghost lg" data-action="close-sheet">Cancel</button>`;
 }
 
+function swapSheet(s) {
+  const m = maps();
+  const r = m.recipeById[s.recipeId];
+  const it = r && r.items.find((x) => x.ingredientId === s.from);
+  if (!it) return '';
+  const name = (m.ingById[it.ingredientId] || { name: 'this ingredient' }).name;
+  const alts = (it.alts || []).filter((a) => m.ingById[a.ingredientId]);
+  if (s.pick) {
+    const ing = m.ingById[s.pick.ingredientId];
+    return html`<h2 id="sheet-title">Use ${ing.name} instead of ${name.toLowerCase()}</h2>
+<p class="small muted">How much for the whole recipe (${servingsText(r.servings)})? The recipe uses ${fmtAmount(it.qty, it.unit)}${it.unit === 'each' ? '' : ' of'} ${name.toLowerCase()}.</p>
+<div class="row"><label class="field" style="flex:1">Amount<input class="input" type="text" inputmode="decimal" autocomplete="off" data-field="swap-qty" data-key="swap-qty" value="${s.pick.qty}"></label>
+<label class="field" style="width:150px">Unit<select class="select" data-field="swap-unit" data-key="swap-unit">${unitOptions(s.pick.unit, ing.sizes || [], unitsFor(ing))}</select></label></div>
+<div class="spread"><span id="swap-save-l" style="font-weight:600">Save as a swap option in the recipe</span><button type="button" class="switch" role="switch" aria-labelledby="swap-save-l" aria-checked="${s.save ? 'true' : 'false'}" data-action="swap-save-toggle"></button></div>
+<div class="row"><button type="button" class="btn plain lg" data-action="swap-back" style="flex:1">Back</button><button type="button" class="btn primary lg" data-action="swap-confirm" style="flex:1"${parseFloat(s.pick.qty) > 0 ? '' : html` disabled`}>Swap</button></div>`;
+  }
+  const used = new Set([it.ingredientId, ...alts.map((a) => a.ingredientId)]);
+  const foods = getData().ingredients.filter((i) => !used.has(i.id));
+  const list = foodPicker(foods, { query: s.query, action: 'swap-pick', prefix: 'swap' });
+  return html`<h2 id="sheet-title">Swap ${name.toLowerCase()}</h2>
+<p class="small muted">Just for this time. Cooking, logging and planning use the swap; the recipe stays as it is.</p>
+${alts.length ? html`<div class="stack" style="gap:6px"><span class="small bold">Swap options in this recipe</span>${alts.map((a, j) => html`<button type="button" class="choice" data-action="swap-use" data-id="${r.id}" data-from="${it.ingredientId}" data-alt="${j}"><span class="tx" style="flex:1"><strong>${m.ingById[a.ingredientId].name}</strong><span>${fmtAmount(a.qty, a.unit)} for the whole recipe</span></span></button>`)}</div>` : ''}
+<button type="button" class="choice" data-action="swap-skip"><span class="tx"><strong>Leave it out this time</strong><span>Cook without ${name.toLowerCase()}</span></span></button>
+<span class="small bold">Or use something else</span>
+<label class="search">${icon('search')}<span class="sr-only">Search your ingredients</span><input type="search" placeholder="Search your ingredients" data-field="swap-query" data-key="swap-query" value="${s.query}"></label>
+<div class="sheet-scroll">${list || html`<p class="small muted">Nothing matches “${s.query}”.</p>`}</div>
+<button type="button" class="btn ghost lg" data-action="close-sheet">Cancel</button>`;
+}
+
+function setSwap(recipeId, from, item) {
+  ui.swaps = { ...(ui.swaps || {}), [recipeId]: { ...swapsFor(recipeId), [from]: item } };
+}
+
 function weekDays() {
   const start = weekStart(dayKey());
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
@@ -113,13 +177,14 @@ function logSheet(sheet) {
   const r = d.recipes.find((x) => x.id === sheet.recipeId);
   if (!r) return '';
   const plan = sheet.type === 'plan-recipe';
-  const n = recipeNutrition(r, maps().ingById).perServing;
+  const n = recipeNutrition(asCooked(r), maps().ingById).perServing;
+  const changed = Object.keys(swapsFor(r.id)).length;
   return html`<h2 id="sheet-title">${plan ? 'Add to meal plan' : 'Log as eaten'}: ${r.name}</h2>
 ${d.members.length ? memberChips(d.members, sheet.memberId, 'sheet-member') : html`<p class="notice warn">Add a member first.</p>`}
 ${plan ? html`<div class="field"><span>Day</span><div class="chips">${weekDays().map((day) => html`<button type="button" class="chip" data-action="sheet-day" data-value="${day}"${pressed(day === sheet.date)}>${parseDay(day).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}</button>`)}</div></div>` : ''}
 <div class="field"><span>Meal</span>${seg(SLOTS, sheet.slot, 'sheet-slot')}</div>
 <div class="spread"><span class="bold">Servings</span>${stepper(servingsText(sheet.servings), 'sheet-less', 'sheet-more', '', ['Fewer servings', 'More servings'])}</div>
-<p class="small muted num">${fmtInt(n.kcal * sheet.servings)} kcal · P ${fmtInt(n.p * sheet.servings)} · C ${fmtInt(n.c * sheet.servings)} · F ${fmtInt(n.f * sheet.servings)}</p>
+<p class="small muted num">${fmtInt(n.kcal * sheet.servings)} kcal · P ${fmtInt(n.p * sheet.servings)} · C ${fmtInt(n.c * sheet.servings)} · F ${fmtInt(n.f * sheet.servings)}${changed ? ` · with your ${changed === 1 ? 'swap' : 'swaps'}` : ''}</p>
 <div class="row"><button type="button" class="btn plain lg" data-action="close-sheet" style="flex:1">Cancel</button><button type="button" class="btn primary lg" data-action="sheet-save-entry" style="flex:1"${sheet.memberId ? '' : html` disabled`}>${plan ? 'Add to plan' : 'Log it'}</button></div>`;
 }
 
@@ -146,7 +211,7 @@ export const recipesView = {
     'cook-more': ({ ds }) => { const r = maps().recipeById[ds.id]; ui.cookServings = { ...(ui.cookServings || {}), [ds.id]: ((ui.cookServings || {})[ds.id] || r.servings) + 1 }; refresh(); },
     cook: ({ ds }) => {
       const m = maps();
-      const r = m.recipeById[ds.id];
+      const r = asCooked(m.recipeById[ds.id]);
       const servings = (ui.cookServings || {})[r.id] || r.servings;
       const before = {};
       update((d) => {
@@ -163,7 +228,7 @@ export const recipesView = {
     },
     'shop-add-missing': ({ ds }) => {
       const m = maps();
-      const r = m.recipeById[ds.id];
+      const r = asCooked(m.recipeById[ds.id]);
       const servings = (ui.cookServings || {})[r.id] || r.servings;
       const adds = stockNeeds(r, servings, m.ingById)
         .filter((x) => x.short && x.ing && Number.isFinite(x.need))
@@ -193,7 +258,9 @@ export const recipesView = {
       const r = m.recipeById[s.recipeId];
       const eaten = s.type === 'log-recipe';
       const entry = { id: uid(), date: s.date, memberId: s.memberId, slot: s.slot, kind: 'recipe', recipeId: r.id, servings: s.servings, eaten };
-      if (eaten) entry.snap = scale(recipeNutrition(r, m.ingById).perServing, s.servings);
+      const swaps = swapCopy(r.id);
+      if (swaps) entry.swaps = swaps;
+      if (eaten) entry.snap = scale(recipeNutrition(withSwaps(r, swaps), m.ingById).perServing, s.servings);
       update((d) => d.entries.push(entry));
       ui.memberId = s.memberId;
       closeSheet();
@@ -201,6 +268,45 @@ export const recipesView = {
       toast(eaten ? `Logged ${servingsText(s.servings)} for ${who}.` : `Added to ${who}’s plan.`, () => update((d) => { d.entries = d.entries.filter((e) => e.id !== entry.id); }));
     },
     'recipe-delete': ({ ds }) => openSheet({ type: 'recipe-delete', id: ds.id }),
+    'swap-open': ({ ds }) => openSheet({ type: 'swap', recipeId: ds.id, from: ds.from, query: '', pick: null, save: false }),
+    'swap-use': ({ ds }) => {
+      const r = maps().recipeById[ds.id];
+      const a = r.items.find((x) => x.ingredientId === ds.from).alts[+ds.alt];
+      setSwap(r.id, ds.from, { ingredientId: a.ingredientId, qty: a.qty, unit: a.unit });
+      if (ui.sheet) closeSheet(); else refresh();
+    },
+    'swap-skip': () => { setSwap(ui.sheet.recipeId, ui.sheet.from, null); closeSheet(); },
+    'swap-pick': ({ ds }) => {
+      const s = ui.sheet;
+      const m = maps();
+      const it = m.recipeById[s.recipeId].items.find((x) => x.ingredientId === s.from);
+      const a = startAmount(m.ingById[ds.id], it);
+      s.pick = { ingredientId: ds.id, qty: String(+a.qty.toFixed(3)), unit: a.unit };
+      refresh();
+    },
+    'swap-back': () => { ui.sheet.pick = null; refresh(); },
+    'swap-save-toggle': () => { ui.sheet.save = !ui.sheet.save; refresh(); },
+    'swap-confirm': () => {
+      const s = ui.sheet;
+      const item = { ingredientId: s.pick.ingredientId, qty: parseFloat(s.pick.qty), unit: s.pick.unit };
+      if (!(item.qty > 0)) return;
+      setSwap(s.recipeId, s.from, item);
+      if (s.save) {
+        update((d) => {
+          const it = d.recipes.find((x) => x.id === s.recipeId).items.find((x) => x.ingredientId === s.from);
+          it.alts = [...(it.alts || []).filter((a) => a.ingredientId !== item.ingredientId), { ...item }];
+        });
+      }
+      closeSheet();
+      if (s.save) toast('Swap saved in the recipe for next time.');
+    },
+    'swap-undo': ({ ds }) => {
+      const next = { ...swapsFor(ds.id) };
+      delete next[ds.from];
+      ui.swaps = { ...(ui.swaps || {}), [ds.id]: next };
+      refresh();
+    },
+    'swap-reset': ({ ds }) => { ui.swaps = { ...(ui.swaps || {}), [ds.id]: {} }; refresh(); },
     'recipe-delete-confirm': ({ ds }) => {
       const m = maps();
       const r = m.recipeById[ds.id];
@@ -218,6 +324,9 @@ export const recipesView = {
   },
   fields: {
     'recipe-query': (v) => { ui.recipeQuery = v; return true; },
+    'swap-query': (v) => { ui.sheet.query = v; return true; },
+    'swap-qty': (v) => { ui.sheet.pick.qty = v; return true; },
+    'swap-unit': (v) => { ui.sheet.pick.unit = v; return true; },
   },
-  sheets: { 'add-recipe': addSheet, 'log-recipe': logSheet, 'plan-recipe': logSheet, 'recipe-delete': deleteSheet },
+  sheets: { swap: swapSheet, 'add-recipe': addSheet, 'log-recipe': logSheet, 'plan-recipe': logSheet, 'recipe-delete': deleteSheet },
 };

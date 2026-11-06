@@ -22,9 +22,9 @@ Open http://localhost:8765/tests/ while the server is running. It runs the check
 | --- | --- |
 | Meal plan | Week view per member, meals by slot, log as eaten, log a single food, copy the day before, day totals vs targets with calories, protein, carbs and fat still to plan. Tap a meal's circle to log it as eaten |
 | Shopping list | Cart button at the top of every phone screen (Shopping in the tablet's side rail). Foods short for meals planned in the next 7 days, low or out staples, and items added by hand or from recipes, grouped by store section and rounded up to whole packages. Tapping the circle adds the amount to stock (with undo) |
-| Recipes | Search and filter; recipe detail with macros per serving, stock before and after cooking, **Cook** (updates stock, with undo), log a serving and add to plan in a bar that stays at the bottom. **Add recipe** offers *Import* (paste an ingredient list; lines not in your food become new foods with nutrition looked up) or *Type it in yourself*. **Add missing to shopping list** |
+| Recipes | Search and filter; recipe detail with macros per serving, stock before and after cooking, **Cook** (updates stock, with undo), log a serving and add to plan in a bar that stays at the bottom. **Add recipe** offers *Import* (paste an ingredient list; lines not in your food become new foods with nutrition looked up) or *Type it in yourself*. **Add missing to shopping list**. **Swap** an ingredient for this time (or leave it out); saved swap options, like pizza toppings, show as one-tap choices. The numbers, cooking, logging and planning all use the swap. In the editor every unit is offered; when a food can't be measured that way yet, the row asks what 1 cup or one piece weighs and saves it with the food |
 | Suggested | Saved recipes you can make now or are one ingredient short of, filtered by what each member has left today, high protein, under 20 minutes, dinner |
-| Ingredients | Stock amounts with − / +, low and out status, staples. **Look up nutrition** (USDA FoodData Central) or **Scan** a barcode (Open Food Facts); scanning a known product adds a package to stock |
+| Ingredients | Foods in groups (Meat & seafood, Eggs & dairy, Vegetables…) that open on tap; searching or filtering opens every group with a match. The group is guessed from the name and can be changed. Stock amounts with − / +, low and out status, staples. **Look up nutrition** (USDA FoodData Central) or **Scan** a barcode (Open Food Facts); scanning a known product adds a package to stock. **Sizes and measures**: what 1 cup and one piece weigh (so recipes and stock can use cups, spoons or pieces), and named sizes like Small / Large / Jumbo eggs with their weights, with typical USDA weights offered for eggs, onions, potatoes and a few other foods |
 | Progress | Every member's day: calories ring, macro bars, weight trend, log weight; a 7-day summary |
 | Member profile | Targets from the Mifflin-St Jeor formula, updated as you type; lose / maintain / gain with pace and goal date; units per member; your own targets if you prefer |
 | Settings | Gear button at the top of every phone screen (Settings in the tablet's side rail). Sync (sign in with Google), appearance (Auto / Day / Night, per device), household members, units for new members, backup download and restore, sample data, erase |
@@ -49,7 +49,8 @@ Everything is saved in the browser on each device (`localStorage`), so the app w
 
 ## Code layout
 
-- `js/nutrition.js`: pure math (units, targets, recipe totals, stock, dates, formatting)
+- `js/nutrition.js`: pure math (units, sizes and conversions, swaps, targets, recipe totals, stock, dates, formatting)
+- `js/kitchen.js`: food groups, guessing a food's group from its name, typical piece sizes
 - `js/store.js`: saved data and device settings
 - `js/sync.js`: Firebase sign-in and record-by-record sync
 - `js/app.js`: shared screen state, navigation, toasts, sheets, selectors

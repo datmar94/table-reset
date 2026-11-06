@@ -1,22 +1,23 @@
 // Optional sample household so the app can be explored before entering real data.
 import { addDays, dayKey, toBase, LB_PER_KG } from './nutrition.js';
 import { emptyData, uid } from './store.js';
+import { sizePreset } from './kitchen.js';
 
 const ING = [
-  ['chicken', 'Chicken breast, raw', 'Proteins', [100, 'g'], [120, 22.5, 0, 2.6], [2, 'lb'], 0.5, true],
-  ['eggs', 'Large eggs', 'Proteins', [1, 'each'], [72, 6.3, 0.4, 4.8], [3, 'each'], 4, true],
-  ['turkey', 'Ground turkey, 93% lean', 'Proteins', [4, 'oz'], [170, 21, 0, 9], [1, 'lb'], 0.5, false],
-  ['yogurt', 'Greek yogurt, nonfat', 'Dairy', [170, 'g'], [100, 17, 6, 0.7], [32, 'oz'], 8, false],
-  ['feta', 'Feta cheese', 'Dairy', [1, 'oz'], [75, 4, 1.2, 6], [0, 'oz'], 2, false],
-  ['rice', 'Brown rice, cooked', 'Grains & starches', [1, 'cup'], [248, 5.5, 52, 2], [6, 'cup'], 2, true],
-  ['oats', 'Rolled oats', 'Grains & starches', [0.5, 'cup'], [150, 5, 27, 3], [6, 'cup'], 1.5, true],
-  ['potato', 'Sweet potatoes', 'Produce', [1, 'each'], [112, 2, 26, 0.1], [3, 'each'], 1, false],
-  ['broccoli', 'Broccoli, chopped', 'Produce', [1, 'cup'], [31, 2.6, 6, 0.3], [4, 'cup'], 1, false],
-  ['spinach', 'Baby spinach', 'Produce', [1, 'cup'], [7, 0.9, 1.1, 0.1], [0, 'cup'], 1, true],
-  ['berries', 'Blueberries', 'Produce', [0.5, 'cup'], [42, 0.5, 10.7, 0.2], [0.5, 'cup'], 1, false],
-  ['pepper', 'Bell peppers', 'Produce', [1, 'each'], [24, 0.8, 5.6, 0.2], [2, 'each'], 1, false],
-  ['oil', 'Olive oil', 'Pantry', [1, 'tbsp'], [119, 0, 0, 13.5], [16, 'fl oz'], 4, true],
-  ['honey', 'Honey', 'Pantry', [1, 'tsp'], [21, 0, 5.8, 0], [1, 'cup'], 0.25, false],
+  ['chicken', 'Chicken breast, raw', 'Meat & seafood', [100, 'g'], [120, 22.5, 0, 2.6], [2, 'lb'], 0.5, true],
+  ['eggs', 'Eggs', 'Eggs & dairy', [1, 'each'], [72, 6.3, 0.4, 4.8], [3, 'each'], 4, true],
+  ['turkey', 'Ground turkey, 93% lean', 'Meat & seafood', [4, 'oz'], [170, 21, 0, 9], [1, 'lb'], 0.5, false],
+  ['yogurt', 'Greek yogurt, nonfat', 'Eggs & dairy', [170, 'g'], [100, 17, 6, 0.7], [32, 'oz'], 8, false],
+  ['feta', 'Feta cheese', 'Eggs & dairy', [1, 'oz'], [75, 4, 1.2, 6], [0, 'oz'], 2, false],
+  ['rice', 'Brown rice, cooked', 'Bread, grains & pasta', [1, 'cup'], [248, 5.5, 52, 2], [6, 'cup'], 2, true],
+  ['oats', 'Rolled oats', 'Bread, grains & pasta', [0.5, 'cup'], [150, 5, 27, 3], [6, 'cup'], 1.5, true],
+  ['potato', 'Sweet potatoes', 'Vegetables', [1, 'each'], [112, 2, 26, 0.1], [3, 'each'], 1, false],
+  ['broccoli', 'Broccoli, chopped', 'Vegetables', [1, 'cup'], [31, 2.6, 6, 0.3], [4, 'cup'], 1, false],
+  ['spinach', 'Baby spinach', 'Vegetables', [1, 'cup'], [7, 0.9, 1.1, 0.1], [0, 'cup'], 1, true],
+  ['berries', 'Blueberries', 'Fruit', [0.5, 'cup'], [42, 0.5, 10.7, 0.2], [0.5, 'cup'], 1, false],
+  ['pepper', 'Bell peppers', 'Vegetables', [1, 'each'], [24, 0.8, 5.6, 0.2], [2, 'each'], 1, false],
+  ['oil', 'Olive oil', 'Oils, sauces & condiments', [1, 'tbsp'], [119, 0, 0, 13.5], [16, 'fl oz'], 4, true],
+  ['honey', 'Honey', 'Baking & sweeteners', [1, 'tsp'], [21, 0, 5.8, 0], [1, 'cup'], 0.25, false],
 ];
 
 const RECIPES = [
@@ -36,7 +37,7 @@ const RECIPES = [
     [['turkey', 1, 'lb'], ['potato', 4, 'each'], ['oil', 4, 'tsp'], ['spinach', 4, 'cup']],
     ['Brown the turkey in the oil, breaking it up.', 'Add diced sweet potato and a splash of water; cover for 12 min.', 'Stir in the spinach until wilted.']],
   ['scramble', 'Veggie egg scramble', 1, 10, ['breakfast'],
-    [['eggs', 3, 'each'], ['pepper', 0.5, 'each'], ['broccoli', 0.5, 'cup'], ['feta', 1, 'oz']],
+    [['eggs', 3, 'Large'], ['pepper', 0.5, 'each'], ['broccoli', 0.5, 'cup'], ['feta', 1, 'oz']],
     ['Sauté the pepper and broccoli 3 min.', 'Add the beaten eggs and stir gently until set.', 'Crumble the feta on top.']],
 ];
 
@@ -71,6 +72,8 @@ export function sampleData(today = dayKey()) {
       per: { kcal: per[0], p: per[1], c: per[2], f: per[3] },
       stock: toBase(stock[0], stock[1]), stockUnit: stock[1], lowAt, staple, source: 'USDA FoodData Central',
     });
+    // Nutrition for the eggs is for one large egg; recipes can pick any size.
+    if (key === 'eggs') data.ingredients[data.ingredients.length - 1].sizes = sizePreset('eggs').sizes;
   }
   const rid = {};
   for (const [key, name, servings, minutes, meals, items, steps] of RECIPES) {
