@@ -1,10 +1,10 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'table-reset-v5';
+const CACHE = 'table-reset-v6';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/main.js', 'js/app.js', 'js/store.js', 'js/ui.js', 'js/nutrition.js', 'js/seed.js', 'js/foods.js', 'js/scan.js',
   'js/views/plan.js', 'js/views/recipes.js', 'js/views/recipeEdit.js', 'js/views/suggested.js',
-  'js/views/ingredients.js', 'js/views/progress.js', 'js/views/members.js', 'js/views/settings.js',
+  'js/views/ingredients.js', 'js/views/progress.js', 'js/views/members.js', 'js/views/settings.js', 'js/views/shopping.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
 ];
 

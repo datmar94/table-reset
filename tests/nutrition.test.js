@@ -5,6 +5,7 @@ import { buildFood, offProduct, portionUnit, servingPortion, usdaHit, usdaPortio
 import { baseAmount, unitsFor } from '../js/nutrition.js';
 import { sampleData } from '../js/seed.js';
 import { byId } from '../js/store.js';
+import { shoppingRows } from '../js/views/shopping.js';
 
 const results = [];
 function test(name, fn) {
@@ -175,6 +176,30 @@ test('Recipes using cups of a food stocked in grams take the right amount', () =
   near(x.need, 250, 0.01, 'grams needed'); eq(x.short, false);
   const [y] = stockNeeds({ servings: 1, items: [{ ingredientId: 'f', qty: 2, unit: 'each' }] }, 1, { f: flour });
   eq(y.short, true, 'no way to convert pieces');
+});
+test('Shopping list: planned meals, staples and packages', () => {
+  const d = {
+    ingredients: [
+      { id: 't', name: 'Turkey', basis: { qty: 100, unit: 'g' }, per: { kcal: 150 }, stock: 200, stockUnit: 'g', pack: { qty: 454, unit: 'g' } },
+      { id: 'e', name: 'Eggs', basis: { qty: 1, unit: 'each' }, per: { kcal: 72 }, stock: 3, stockUnit: 'each', staple: true, lowAt: 4 },
+      { id: 's', name: 'Spinach', basis: { qty: 1, unit: 'cup' }, per: { kcal: 7 }, stock: 0, stockUnit: 'cup', staple: true, lowAt: 0 },
+      { id: 'o', name: 'Oats', basis: { qty: 100, unit: 'g' }, per: { kcal: 379 }, stock: 1000, stockUnit: 'g' },
+    ],
+    recipes: [{ id: 'r', name: 'Skillet', servings: 2, items: [{ ingredientId: 't', qty: 500, unit: 'g' }] }],
+    entries: [
+      { date: '2026-11-05', kind: 'recipe', recipeId: 'r', servings: 2, eaten: false },
+      { date: '2026-11-05', kind: 'recipe', recipeId: 'r', servings: 2, eaten: true },
+      { date: '2026-11-20', kind: 'recipe', recipeId: 'r', servings: 2, eaten: false },
+    ],
+    shopping: [{ id: 'x', ingredientId: 'o', base: 250, recipeId: null }],
+  };
+  const rows = shoppingRows(d, '2026-11-05');
+  eq(rows.map((r) => r.ing.name).join(','), 'Eggs,Oats,Spinach,Turkey', 'only planned, low, out and added foods');
+  const by = Object.fromEntries(rows.map((r) => [r.ing.id, r]));
+  eq(by.t.packs, 1, 'short 300 g rounds up to one 454 g pack'); eq(by.t.buy, 454);
+  eq(by.e.buy, 5, 'a low staple is brought back to twice its low mark');
+  eq(by.s.buy, null, 'nothing to go on: the app asks');
+  eq(by.o.buy, 250); eq(by.o.reasons[0], 'added by you');
 });
 
 const out = document.getElementById('out');

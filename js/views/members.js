@@ -85,12 +85,12 @@ ${dr.error ? html`<p class="notice warn" role="alert">${dr.error}</p>` : ''}
 <section class="card">
 <div class="row">${avatar({ name: dr.name || '?', color: dr.color }, 52)}<label class="field" style="flex:1">Name<input class="input" type="text" data-field="m-name" data-key="m-name" value="${dr.name}" autocomplete="off"></label></div>
 <div class="grid2">
-<div class="field"><span id="units-l">Units</span>${seg([['imperial', 'lb · ft/in'], ['metric', 'kg · cm']], dr.units, 'm-units', ' aria-labelledby="units-l"')}</div>
-<div class="field"><span id="sex-l">Sex (used in the formula)</span>${seg([['male', 'Male'], ['female', 'Female']], dr.sex, 'm-sex', ' aria-labelledby="sex-l"')}</div>
+<div class="field full-sm"><span id="units-l">Units</span>${seg([['imperial', 'lb · ft/in'], ['metric', 'kg · cm']], dr.units, 'm-units', ' aria-labelledby="units-l"')}</div>
+<div class="field full-sm"><span id="sex-l">Sex (used in the formula)</span>${seg([['male', 'Male'], ['female', 'Female']], dr.sex, 'm-sex', ' aria-labelledby="sex-l"')}</div>
 ${numberField('Age', 'm-age', dr.age)}
 ${numberField(`Weight (${unit})`, 'm-wt', dr.wt, '0.1')}
-${imp ? html`<div class="grid2">${numberField('Height (ft)', 'm-ft', dr.ft)}${numberField('Height (in)', 'm-inch', dr.inch)}</div>` : numberField('Height (cm)', 'm-cm', dr.cm)}
-<label class="field">Activity level<select class="select" data-field="m-activity" data-key="m-activity">${ACTIVITY.map((a) => html`<option value="${a.value}"${String(a.value) === dr.activity ? html` selected` : ''}>${a.label}</option>`)}</select></label>
+${imp ? html`<div class="grid2 full-sm">${numberField('Height (ft)', 'm-ft', dr.ft)}${numberField('Height (in)', 'm-inch', dr.inch)}</div>` : numberField('Height (cm)', 'm-cm', dr.cm)}
+<label class="field full-sm">Activity level<select class="select" data-field="m-activity" data-key="m-activity">${ACTIVITY.map((a) => html`<option value="${a.value}"${String(a.value) === dr.activity ? html` selected` : ''}>${a.label}</option>`)}</select></label>
 </div>
 ${age > 0 && age < 18 ? html`<p class="notice warn">These targets are made for adults. Check with a doctor before setting goals for someone under 18.</p>` : ''}
 </section>

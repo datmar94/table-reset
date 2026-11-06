@@ -1,7 +1,9 @@
 import { getData, update, uid } from '../store.js';
 import { ui, maps, currentMember, dayTotals, entriesFor, entryNutrition, entryName, openSheet, closeSheet, toast, refresh } from '../app.js';
-import { addDays, baseAmount, dayKey, fmtAmount, fmtInt, fromBase, nutrientsFor, parseDay, recipeNutrition, scale, stockStatus, targets, unitsFor, weekStart } from '../nutrition.js';
-import { html, icon, pressed, bar, leftTiles, macroBars, memberChips, seg, stepper, SLOTS, slotLabel, servingsText } from '../ui.js';
+import { addDays, dayKey, fmtAmount, fmtInt, nutrientsFor, parseDay, recipeNutrition, scale, targets, unitsFor, weekStart } from '../nutrition.js';
+import { html, icon, pressed, bar, leftTiles, memberChips, seg, stepper, SLOTS, slotLabel, servingsText } from '../ui.js';
+
+const MACROS = [['Protein', 'p', 'fill-protein'], ['Carbs', 'c', 'fill-carbs'], ['Fat', 'f', 'fill-fat']];
 import { welcome } from './progress.js';
 
 function entryQty(e) {
@@ -15,51 +17,14 @@ function slotSection(slot, label, list, m) {
 ${list.length ? html`<ul class="list">${list.map((e) => {
     const n = entryNutrition(e, m);
     const shared = e.kind === 'recipe' ? getData().entries.filter((x) => x.date === e.date && x.recipeId === e.recipeId && x.slot === e.slot && x.memberId !== e.memberId) : [];
-    return html`<li style="flex-wrap:wrap">
-<div class="grow" style="min-width:160px">${e.kind === 'recipe' && m.recipeById[e.recipeId] ? html`<a class="title" href="#/recipes/${e.recipeId}" style="color:inherit;text-decoration:none">${entryName(e, m)}</a>` : html`<span class="title">${entryName(e, m)}</span>`}
-<span class="meta num">${entryQty(e)} · ${fmtInt(n.kcal)} kcal · P ${fmtInt(n.p)} · C ${fmtInt(n.c)} · F ${fmtInt(n.f)}</span>
+    return html`<li class="has-check">
+<button type="button" class="check" data-action="toggle-eaten" data-id="${e.id}"${pressed(!!e.eaten)} aria-label="${entryName(e, m)} eaten"><span>${icon('check', 16, 3)}</span></button>
+<div class="grow">${e.kind === 'recipe' && m.recipeById[e.recipeId] ? html`<a class="title" href="#/recipes/${e.recipeId}" style="color:inherit;text-decoration:none">${entryName(e, m)}</a>` : html`<span class="title">${entryName(e, m)}</span>`}
+<span class="meta num"><span class="nw">${entryQty(e)}</span> · <span class="nw">${fmtInt(n.kcal)} kcal</span> · <span class="nw">P ${fmtInt(n.p)}</span> · <span class="nw">C ${fmtInt(n.c)}</span> · <span class="nw">F ${fmtInt(n.f)}</span>${e.eaten ? html` · <strong style="color:var(--accent-text)">Eaten</strong>` : ''}</span>
 ${shared.length ? html`<span class="tiny" style="font-weight:600;color:var(--accent-strong)">Also on ${shared.map((x) => (m.memberById[x.memberId] || {}).name).filter(Boolean).join(' and ')}’s plan</span>` : ''}</div>
-${e.eaten
-    ? html`<button type="button" class="btn on" data-action="toggle-eaten" data-id="${e.id}" aria-label="Eaten. Tap to undo">${icon('check', 18, 2.6)}Eaten</button>`
-    : html`<button type="button" class="btn outline" data-action="toggle-eaten" data-id="${e.id}">${icon('circle', 18)}Log as eaten</button>`}
 <button type="button" class="icon-btn bare" data-action="entry-remove" data-id="${e.id}" aria-label="Remove ${entryName(e, m)}">${icon('trash', 18)}</button></li>`;
   })}</ul>` : html`<p class="empty" style="padding:12px 14px">Nothing planned.</p>`}
 </section>`;
-}
-
-/** What to buy for the planned (not yet eaten) meals this week, plus staples that are low. */
-export function shoppingList(startKey) {
-  const d = getData();
-  const m = maps();
-  const end = addDays(startKey, 6);
-  const need = {};
-  for (const e of d.entries) {
-    if (e.eaten || e.date < startKey || e.date > end) continue;
-    if (e.kind === 'recipe') {
-      const r = m.recipeById[e.recipeId];
-      if (!r) continue;
-      for (const it of r.items) {
-        const ing = m.ingById[it.ingredientId];
-        const base = baseAmount(ing, it.qty, it.unit);
-        if (!Number.isFinite(base)) continue;
-        need[ing.id] = (need[ing.id] || 0) + (base * e.servings) / r.servings;
-      }
-    } else {
-      const ing = m.ingById[e.ingredientId];
-      const base = baseAmount(ing, e.qty, e.unit);
-      if (Number.isFinite(base)) need[ing.id] = (need[ing.id] || 0) + base;
-    }
-  }
-  const out = [];
-  for (const [id, base] of Object.entries(need)) {
-    const ing = m.ingById[id];
-    if (ing.stock + 1e-9 < base) out.push({ ing, text: `Need ${fmtAmount(fromBase(base - ing.stock, ing.stockUnit), ing.stockUnit)} more`, why: 'for planned meals' });
-  }
-  for (const ing of d.ingredients) {
-    const st = stockStatus(ing);
-    if (ing.staple && st !== 'on' && !out.some((x) => x.ing.id === ing.id)) out.push({ ing, text: st === 'out' ? 'Out' : `${fmtAmount(fromBase(ing.stock, ing.stockUnit), ing.stockUnit)} left`, why: 'staple' });
-  }
-  return out.sort((a, b) => a.ing.name.localeCompare(b.ing.name));
 }
 
 function render() {
@@ -76,8 +41,6 @@ function render() {
   const list = entriesFor(member.id, day);
   const left = t ? { kcal: t.kcal - planned.kcal, p: t.p - planned.p, c: t.c - planned.c, f: t.f - planned.f } : null;
   const dayName = parseDay(day).toLocaleDateString('en-US', { weekday: 'long' });
-  const shop = shoppingList(start);
-  const extra = (d.shopping || []).map((x) => ({ ...x, ing: m.ingById[x.ingredientId], recipe: m.recipeById[x.recipeId] })).filter((x) => x.ing);
   const rangeLabel = `${parseDay(start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${parseDay(addDays(start, 6)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
   return html`<main class="main" id="main">
 <header class="page-head"><div><h1>Meal plan</h1><p class="sub">Week of ${rangeLabel}</p></div>${memberChips(d.members, member.id, 'pick-member')}</header>
@@ -87,9 +50,10 @@ ${start !== weekStart(today) ? html`<button type="button" class="btn ghost" data
 <button type="button" class="icon-btn bare" data-action="plan-week" data-value="7" aria-label="Next week">${icon('chevron')}</button></div>
 <div class="day-strip" role="group" aria-label="Day">${days.map((k) => {
     const n = entriesFor(member.id, k).length;
-    return html`<button type="button" class="${k === today ? 'today' : ''}" data-action="plan-day" data-value="${k}"${pressed(k === day)}><span class="d">${parseDay(k).toLocaleDateString('en-US', { weekday: 'short' })}</span><span class="n">${parseDay(k).getDate()}</span><span class="m">${n ? `${n} item${n === 1 ? '' : 's'}` : ''}</span></button>`;
+    return html`<button type="button" class="${k === today ? 'today' : ''}" data-action="plan-day" data-value="${k}"${pressed(k === day)}><span class="d">${parseDay(k).toLocaleDateString('en-US', { weekday: 'short' })}</span><span class="n">${parseDay(k).getDate()}</span><span class="m">${n ? html`<span class="pips" aria-hidden="true">${'•'.repeat(Math.min(n, 4))}${n > 4 ? '+' : ''}</span><span class="tx">${n} item${n === 1 ? '' : 's'}</span>` : ''}</span></button>`;
   })}</div></div>
 <div class="cols side-first"><div class="col-main stack">
+${list.length ? html`<p class="small muted">Tap the circle when a meal is eaten.</p>` : ''}
 ${SLOTS.map(([slot, label]) => slotSection(slot, label, list.filter((e) => e.slot === slot), m))}
 <div class="row wrap"><button type="button" class="btn plain" data-action="plan-food">${icon('plus', 18, 2.2)}Log something else</button>
 ${!list.length && entriesFor(member.id, addDays(day, -1)).length ? html`<button type="button" class="btn plain" data-action="plan-copy">${icon('copy', 18)}Copy the day before</button>` : ''}</div>
@@ -97,21 +61,14 @@ ${!list.length && entriesFor(member.id, addDays(day, -1)).length ? html`<button 
 <aside class="col-side stack">
 <section class="card" aria-label="Day totals">
 <div class="spread"><h2>${member.name}’s ${dayName}</h2><span class="small muted">Target ${t ? fmtInt(t.kcal) : '—'} kcal</span></div>
-<div class="row" style="gap:24px"><div><span class="small muted">Eaten</span><strong class="num" style="display:block;font-size:24px">${fmtInt(eaten.kcal)}</strong></div>
-<div><span class="small muted">Planned</span><strong class="num" style="display:block;font-size:24px;color:var(--muted2)">${fmtInt(planned.kcal)}</strong></div></div>
+<div class="row" style="gap:24px"><div><span class="small muted row" style="gap:6px"><span class="dot fill-accent"></span>Eaten</span><strong class="num" style="display:block;font-size:24px">${fmtInt(eaten.kcal)}</strong></div>
+<div><span class="small muted row" style="gap:6px"><span class="dot fill-soft"></span>Planned</span><strong class="num" style="display:block;font-size:24px;color:var(--muted2)">${fmtInt(planned.kcal)}</strong></div></div>
 <span class="bar thick" role="img" aria-label="${fmtInt(eaten.kcal)} calories eaten and ${fmtInt(planned.kcal)} planned of ${t ? fmtInt(t.kcal) : 'no target'}"><i class="fill-soft" style="width:${t ? Math.min(100, (planned.kcal / t.kcal) * 100).toFixed(1) : 0}%"></i><i class="fill-accent" style="width:${t ? Math.min(100, (eaten.kcal / t.kcal) * 100).toFixed(1) : 0}%"></i></span>
-<div class="row tiny muted" style="gap:14px"><span class="row" style="gap:5px"><span class="dot fill-accent"></span>Eaten</span><span class="row" style="gap:5px"><span class="dot fill-soft"></span>Planned</span></div>
-${macroBars(eaten, t, true)}
+<div class="macro-grid">${MACROS.map(([label, k, cls]) => html`<div class="macro-row"><span class="small bold">${label}</span><span class="tiny muted num">${fmtInt(eaten[k])} / ${t ? fmtInt(t[k]) : '—'} g</span>${bar(t && t[k] ? eaten[k] / t[k] : 0, cls, 'thin')}</div>`)}</div>
 ${left ? leftTiles(left, 'Still to plan') : ''}
 ${left && left.kcal > 50 ? html`<a class="notice ok spread" href="#/suggested" style="text-decoration:none">Find recipes that fit what’s left ${icon('chevron', 18)}</a>` : ''}
 </section>
-<section class="card tight" aria-label="Shopping list"><h2>Shopping list for this week</h2>
-${shop.length ? html`<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px">${shop.map((x) => html`<li class="spread small"><span>${x.ing.name}</span><span style="color:${x.why === 'staple' && x.text !== 'Out' ? 'var(--warn-text)' : 'var(--muted)'}">${x.text}${x.why === 'staple' ? ' · staple' : ''}</span></li>`)}</ul>` : html`<p class="small muted">Nothing to buy for the planned meals.</p>`}
-${extra.length ? html`<h3 class="small bold" style="margin-top:6px">Added from recipes</h3>
-<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">${extra.map((x) => html`<li class="row small" style="gap:8px"><span style="flex:1;min-width:0"><span class="bold">${x.ing.name}</span><span class="tiny muted" style="display:block">${fmtAmount(fromBase(x.base, x.ing.stockUnit), x.ing.stockUnit)}${x.recipe ? ` · for ${x.recipe.name}` : ''}</span></span>
-<button type="button" class="btn ghost" data-action="shop-bought" data-id="${x.id}" aria-label="Bought ${x.ing.name}: add it to stock">${icon('check', 16, 2.6)}Bought</button>
-<button type="button" class="icon-btn bare" data-action="shop-remove" data-id="${x.id}" aria-label="Remove ${x.ing.name} from the list">${icon('close', 16)}</button></li>`)}</ul>` : ''}
-</section></aside></div>
+</aside></div>
 </main>`;
 }
 
@@ -194,26 +151,6 @@ export const planView = {
       const removed = getData().entries.find((e) => e.id === ds.id);
       update((d) => { d.entries = d.entries.filter((e) => e.id !== ds.id); });
       toast(`Removed ${entryName(removed)}.`, () => update((d) => d.entries.push(removed)));
-    },
-    'shop-bought': ({ ds }) => {
-      const item = getData().shopping.find((x) => x.id === ds.id);
-      const ing = maps().ingById[item.ingredientId];
-      const before = ing.stock;
-      update((d) => {
-        d.shopping = d.shopping.filter((x) => x.id !== item.id);
-        const i = d.ingredients.find((x) => x.id === item.ingredientId);
-        i.stock = (i.stock || 0) + item.base;
-      });
-      toast(`Added ${ing.name} to your stock.`, () => update((d) => {
-        d.shopping.push(item);
-        const i = d.ingredients.find((x) => x.id === item.ingredientId);
-        if (i) i.stock = before;
-      }));
-    },
-    'shop-remove': ({ ds }) => {
-      const item = getData().shopping.find((x) => x.id === ds.id);
-      update((d) => { d.shopping = d.shopping.filter((x) => x.id !== item.id); });
-      toast('Removed from the shopping list.', () => update((d) => d.shopping.push(item)));
     },
     'plan-copy': () => {
       const member = currentMember();

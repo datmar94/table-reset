@@ -16,7 +16,7 @@ function stockText(ing) {
 function row(ing) {
   const st = stockStatus(ing);
   const color = st === 'on' ? 'var(--accent-strong)' : st === 'low' ? 'var(--warn-text)' : 'var(--muted2)';
-  const note = WORD[st] + (ing.staple && st !== 'on' ? ' · on shopping list' : '');
+  const note = WORD[st] + (ing.staple && st !== 'on' ? ' · on the shopping list' : '');
   const needs = ing.needsNutrition ? ' · needs nutrition' : '';
   return html`<li>
 <a class="tap" href="#/ingredients/${ing.id}" style="text-decoration:none;color:inherit"><span class="title">${ing.name}${ing.staple ? html` <span style="color:var(--accent)" aria-label="staple">${icon('star', 13)}</span>` : ''}</span><span class="tiny" style="font-weight:700;color:${color}">${note}${needs}</span></a>
@@ -40,7 +40,7 @@ function renderList() {
 <header class="page-head"><div><h1>Ingredients</h1><p class="sub">Amounts go down when you cook a recipe. Tap − or + to correct them.</p></div>
 <div class="row wrap"><button type="button" class="btn outline" data-action="ing-scan">${icon('scan', 18)}Scan</button><a class="btn primary" href="#/ingredients/new">${icon('plus', 18, 2.2)}Add food</a></div></header>
 <div class="row wrap"><label class="search" style="flex:1;min-width:220px">${icon('search')}<span class="sr-only">Search my ingredients</span><input type="search" placeholder="Search my ingredients" data-field="ing-query" data-key="ing-query" value="${ui.ingQuery || ''}"></label>
-<div class="chips" role="group" aria-label="Filter by stock">${[['all', 'All'], ['on', 'On hand'], ['low', 'Low'], ['out', 'Out']].map(([id, label]) => html`<button type="button" class="chip" data-action="ing-filter" data-value="${id}"${pressed(filter === id)}>${label} · ${counts[id]}</button>`)}</div></div>
+<div class="chips scroll" role="group" aria-label="Filter by stock">${[['all', 'All'], ['on', 'On hand'], ['low', 'Low'], ['out', 'Out']].map(([id, label]) => html`<button type="button" class="chip" data-action="ing-filter" data-value="${id}"${pressed(filter === id)}>${label} · ${counts[id]}</button>`)}</div></div>
 ${!d.ingredients.length ? html`<p class="empty">No ingredients yet. Add the food you keep at home, with the nutrition from its label.</p>`
     : !groups.length ? html`<p class="empty">Nothing matches.</p>`
     : html`<div class="cards two">${groups.map(([title, items]) => html`<section class="stack" style="gap:6px"><h2 class="section-title">${title}</h2><ul class="list">${items.map(row)}</ul></section>`)}</div>`}

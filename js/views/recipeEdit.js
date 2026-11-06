@@ -117,7 +117,12 @@ function render(params) {
   const shown = dr.view === 'serving' ? perServing : total;
   const used = new Set(dr.items.map((it) => it.ingredientId));
   const q = dr.query.trim().toLowerCase();
-  const picks = d.ingredients.filter((i) => !used.has(i.id) && (!q || i.name.toLowerCase().includes(q))).sort((a, b) => a.name.localeCompare(b.name)).slice(0, q ? 30 : 16);
+  // Without a search, offer the foods used most in other recipes rather than the whole list.
+  const uses = {};
+  d.recipes.forEach((r) => r.items.forEach((it) => { uses[it.ingredientId] = (uses[it.ingredientId] || 0) + 1; }));
+  const picks = q
+    ? d.ingredients.filter((i) => !used.has(i.id) && i.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 12)
+    : d.ingredients.filter((i) => !used.has(i.id)).sort((a, b) => (uses[b.id] || 0) - (uses[a.id] || 0) || a.name.localeCompare(b.name)).slice(0, 8);
   const back = id ? `#/recipes/${id}` : '#/recipes';
   return html`<main class="main with-bar" id="main">
 <div class="topbar"><a class="icon-btn bare lg" href="${back}" aria-label="Discard changes and go back">${icon('close', 24)}</a><h1>${id ? 'Edit recipe' : 'New recipe'}</h1></div>
@@ -130,7 +135,6 @@ ${dr.notes.length ? html`<div class="notice ok">${dr.notes.join(' ')}</div>` : '
 <label class="spread" style="font-weight:600">Time (minutes)<input class="input short" type="text" inputmode="numeric" autocomplete="off" data-field="r-minutes" data-key="r-minutes" value="${dr.minutes}"></label>
 <div class="chips" role="group" aria-label="Meal type">${SLOTS.map(([sid, label]) => html`<button type="button" class="chip" data-action="r-meal" data-value="${sid}"${pressed(!!dr.meals[sid])}>${label}</button>`)}</div>
 </section>
-<label class="field" style="font-size:15px;font-weight:700;color:var(--ink)">Steps (optional)<textarea class="textarea" data-field="r-steps" data-key="r-steps" placeholder="One step per line">${dr.steps}</textarea></label>
 </div>
 <div class="col-main stack">
 <div class="row" style="align-items:stretch;flex-wrap:wrap"><div style="flex:1;min-width:260px">${heroTotals(shown, dr.view === 'serving' ? 'kcal / serving' : 'kcal total')}</div>
@@ -139,11 +143,13 @@ ${dr.notes.length ? html`<div class="notice ok">${dr.notes.join(' ')}</div>` : '
 ${dr.items.length ? html`<ul class="list">${dr.items.map((it, i) => itemRow(it, i, m.ingById))}</ul>` : html`<p class="empty">No ingredients yet. Add some below.</p>`}
 <section class="card tight"><h2 style="font-size:15px">Add an ingredient</h2>
 <label class="search">${icon('search')}<span class="sr-only">Search your ingredients</span><input type="search" placeholder="Type to search, e.g. oats" data-field="r-query" data-key="r-query" value="${dr.query}"></label>
-<span class="small" style="font-weight:600;color:var(--muted2)">From your ingredients · tap to add</span>
+${picks.length ? html`<span class="small" style="font-weight:600;color:var(--muted2)">${q ? 'Matches' : 'Used most'} · tap to add</span>` : ''}
 <div class="chips">${picks.map((i) => html`<button type="button" class="chip" data-action="r-add" data-id="${i.id}">${icon('plus', 16, 2.4)}${i.name}</button>`)}</div>
 ${q && !picks.length ? html`<p class="small muted">“${dr.query}” isn’t in your ingredients yet.</p>` : ''}
 <button type="button" class="btn plain" data-action="r-new-ing">${icon('plus', 18, 2.2)}${q && !picks.length ? `Add “${dr.query.trim()}” as a new food` : 'Add a new food'}</button>
-</section></div></div>
+</section>
+<label class="field" style="font-size:15px;font-weight:700;color:var(--ink)">Steps (optional)<textarea class="textarea" data-field="r-steps" data-key="r-steps" placeholder="One step per line">${dr.steps}</textarea></label>
+</div></div>
 <div class="bottom-bar"><a class="btn plain lg" href="${back}">Cancel</a><button type="button" class="btn primary lg" data-action="r-save">Save recipe</button></div>
 </main>`;
 }
@@ -155,13 +161,13 @@ function renderImport() {
   const lines = imp.parsed || [];
   return html`<main class="main with-bar" id="main">
 <div class="topbar"><a class="icon-btn bare lg" href="#/recipes" aria-label="Cancel import">${icon('close', 24)}</a><h1>Import a recipe</h1></div>
-<p class="notice ok">Open the recipe in Chrome, select its ingredient list, copy it and paste it here. The app matches each line to your ingredients and works out the macros. Importing straight from a link comes with the online sync step.</p>
+<p class="notice ok">Open the recipe in Chrome, select its ingredient list, copy it and paste it below. Importing straight from a link comes with the online sync step.</p>
 <div class="cols"><div class="col-main stack">
 <section class="card">
 <label class="field">Recipe name<input class="input" type="text" data-field="imp-name" data-key="imp-name" value="${imp.name}" placeholder="e.g. Sheet-pan lemon garlic salmon"></label>
 <div class="spread"><span class="bold">Makes</span>${stepper(servingsText(imp.servings), 'imp-less', 'imp-more', '', ['Fewer servings', 'More servings'])}</div>
 <label class="field">Ingredient list<textarea class="textarea" style="min-height:180px" data-field="imp-text" data-key="imp-text" placeholder="1½ lb salmon fillets&#10;2 tbsp olive oil&#10;1 lb baby potatoes, halved">${imp.text}</textarea></label>
-<button type="button" class="btn outline" data-action="imp-parse"${imp.text.trim() ? '' : html` disabled`}>Match to my ingredients</button>
+<p class="tiny muted">Each line is matched to your ingredients as soon as you paste.</p>
 </section></div>
 <div class="col-side stack">${lines.length ? html`<section class="card tight"><h2>Matches</h2>${lines.map((l) => html`<div style="padding:8px 0;border-bottom:1px solid var(--line-soft)">
 <span class="tiny muted">From the page: “${l.raw}”</span>
@@ -182,7 +188,7 @@ function lookText(l) {
 
 /** Look up nutrition for the new foods, one search each, then their portion sizes in one go. */
 async function lookupNew(imp) {
-  const fresh = imp.parsed.filter((l) => l.isNew);
+  const fresh = imp.parsed.filter((l) => l.isNew && l.look === 'pending');
   const key = foodKey();
   for (const l of fresh) {
     if (ui.importDraft !== imp) return;
@@ -205,12 +211,18 @@ async function lookupNew(imp) {
       for (const l of fresh) if (l.hit) l.found = { ...buildFood(l.hit.per100, portions[l.hit.id] || [], l.unit || 'g'), source: `USDA: ${l.hit.name}` };
     } catch (e) { /* per-100 g nutrition is still right; only cup/each conversions are missing */ }
   }
+  // Remember the answers so editing the list doesn't look the same foods up again.
+  for (const l of fresh) if (l.look !== 'pending') imp.cache[lookKey(l)] = { look: l.look, hit: l.hit, found: l.found };
   refresh();
 }
+
+const lookKey = (l) => `${l.name.toLowerCase()}|${l.unit || ''}`;
 
 function parseImport() {
   const imp = ui.importDraft;
   const ings = getData().ingredients;
+  imp.cache = imp.cache || {};
+  imp.parsedText = imp.text;
   imp.parsed = imp.text.split('\n').map((s) => s.trim()).filter((s) => s && !/^(ingredients?|for the .*|:)$/i.test(s)).map((line) => {
     if (/\b(to taste|as needed|for garnish)\b/i.test(line)) return { raw: line, skip: true };
     const p = parseLine(line);
@@ -219,7 +231,8 @@ function parseImport() {
     if (!unit && (!ing || kindOf(ing.basis.unit) === 'count' || (ing.convert || []).some((c) => c.unit === 'each'))) unit = 'each';
     if (!ing) {
       const name = (p.name || line).replace(/^(of|a|an)\s+/i, '').trim();
-      return { raw: p.raw, isNew: true, name: name.charAt(0).toUpperCase() + name.slice(1), qty: qty > 0 ? qty : 1, unit, ok: qty > 0, look: 'pending' };
+      const line = { raw: p.raw, isNew: true, name: name.charAt(0).toUpperCase() + name.slice(1), qty: qty > 0 ? qty : 1, unit, ok: qty > 0, look: 'pending' };
+      return Object.assign(line, imp.cache[lookKey(line)] || {});
     }
     const ok = !!(qty > 0 && unit && unitsFor(ing).includes(unit));
     return { raw: p.raw, ing, qty, unit, ok, amount: ok ? fmtAmount(qty, unit) : '' };
@@ -229,6 +242,7 @@ function parseImport() {
 }
 
 const cur = () => ui.drafts['recipe:' + (ui.route.params.id || 'new')];
+let matchTimer = null;
 
 export const recipeEditView = {
   routes: { recipeEdit: render, recipeImport: renderImport },
@@ -285,9 +299,10 @@ export const recipeEditView = {
     },
     'imp-less': () => { ui.importDraft.servings = Math.max(1, ui.importDraft.servings - 1); refresh(); },
     'imp-more': () => { ui.importDraft.servings += 1; refresh(); },
-    'imp-parse': () => { parseImport(); refresh(); },
     'imp-continue': () => {
       const imp = ui.importDraft;
+      // Pressed before the latest edit was matched: match it first.
+      if (imp.parsedText !== imp.text) { clearTimeout(matchTimer); parseImport(); refresh(); return; }
       const dr = blankDraft();
       dr.name = imp.name;
       dr.servings = imp.servings;
@@ -321,7 +336,17 @@ export const recipeEditView = {
     'r-qty': (v, ds) => { cur().items[+ds.index].qty = v; return true; },
     'r-unit': (v, ds) => { cur().items[+ds.index].unit = v; return true; },
     'imp-name': (v) => { ui.importDraft.name = v; },
-    'imp-text': (v) => { ui.importDraft.text = v; ui.importDraft.parsed = null; return true; },
+    'imp-text': (v) => {
+      const imp = ui.importDraft;
+      imp.text = v;
+      clearTimeout(matchTimer);
+      matchTimer = setTimeout(() => {
+        if (ui.importDraft !== imp) return;
+        if (imp.text.trim()) parseImport();
+        else imp.parsed = null;
+        refresh();
+      }, 600);
+    },
   },
   sheets: {},
   onLeave: (route, next) => {

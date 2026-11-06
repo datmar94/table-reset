@@ -18,7 +18,7 @@ function render() {
   const d = getData();
   const dev = getDevice();
   return html`<main class="main" id="main">
-<div class="topbar"><a class="icon-btn bare lg" href="#/progress" aria-label="Back to Progress">${icon('back', 24)}</a><h1>Settings</h1></div>
+<div class="topbar"><button type="button" class="icon-btn bare lg" data-action="go-back" aria-label="Back">${icon('back', 24)}</button><h1>Settings</h1></div>
 <div class="cols"><div class="col-main stack">
 <section class="card" aria-labelledby="appearance-h"><h2 id="appearance-h">Appearance</h2>
 <div class="stack" role="radiogroup" aria-labelledby="appearance-h" style="gap:8px">${MODES.map(([id, label, desc, l, r, dot]) => html`<button type="button" class="choice" role="radio" aria-checked="${dev.appearance === id ? 'true' : 'false'}" data-action="set-appearance" data-value="${id}">${swatch(l, r, dot)}<span class="tx" style="flex:1"><strong>${label}</strong><span>${desc}</span></span>${dev.appearance === id ? icon('check', 22, 2.6) : ''}</button>`)}</div>

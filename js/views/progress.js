@@ -73,7 +73,6 @@ function render() {
   return html`<main class="main" id="main">
 <header class="page-head"><div><h1>Progress</h1><p class="sub">${today} · ${d.members.length} member${d.members.length === 1 ? '' : 's'}</p></div>
 <div class="head-actions">${seg([['today', 'Today'], ['week', 'This week']], range, 'progress-range', ' aria-label="Time range" style="min-width:220px"')}
-<a class="icon-btn" href="#/settings" aria-label="Settings">${icon('gear', 22, 1.9)}</a>
 <a class="btn primary" href="#/members/new">${icon('plus', 18, 2.2)}Add member</a></div></header>
 ${range === 'today'
     ? html`<div class="cards four">${d.members.map((x) => memberCard(x, m))}</div>`

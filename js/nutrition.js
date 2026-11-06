@@ -112,11 +112,11 @@ export function macroSplit(n) {
 
 // ---------- Body targets ----------
 export const ACTIVITY = [
-  { value: 1.2, label: 'Sedentary: desk job, little exercise' },
-  { value: 1.375, label: 'Light: exercise 1–3 days a week' },
-  { value: 1.55, label: 'Moderate: exercise 3–5 days a week' },
-  { value: 1.725, label: 'Very active: exercise 6–7 days a week' },
-  { value: 1.9, label: 'Athlete: hard training or a physical job' },
+  { value: 1.2, label: 'Sedentary: little or no exercise' },
+  { value: 1.375, label: 'Light: 1–3 workouts a week' },
+  { value: 1.55, label: 'Moderate: 3–5 workouts a week' },
+  { value: 1.725, label: 'Very active: 6–7 workouts a week' },
+  { value: 1.9, label: 'Athlete or physical job' },
 ];
 export const LB_PER_KG = 2.20462;
 export const KCAL_PER_LB = 3500;

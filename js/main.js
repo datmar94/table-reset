@@ -9,8 +9,9 @@ import { ingredientsView } from './views/ingredients.js';
 import { progressView } from './views/progress.js';
 import { membersView } from './views/members.js';
 import { settingsView } from './views/settings.js';
+import { shoppingView, shoppingCount } from './views/shopping.js';
 
-const VIEWS = [planView, recipesView, recipeEditView, suggestedView, ingredientsView, progressView, membersView, settingsView];
+const VIEWS = [planView, recipesView, recipeEditView, suggestedView, ingredientsView, progressView, membersView, settingsView, shoppingView];
 const routes = Object.assign({}, ...VIEWS.map((v) => v.routes));
 const actions = Object.assign({}, ...VIEWS.map((v) => v.actions));
 const fields = Object.assign({}, ...VIEWS.map((v) => v.fields));
@@ -39,8 +40,26 @@ function parseRoute(hash) {
   return { name: 'plan', params: {} };
 }
 
-function nav(route) {
-  return html`<nav class="nav" aria-label="Main">${TABS.map(([key, label, href, names]) => html`<a href="${href}"${names.includes(route.name) ? html` aria-current="page"` : ''}><span class="pill">${icon(key, 22, 1.9)}</span><span>${label}</span></a>`)}</nav>`;
+// Screens with their own Save bar: on a phone the tabs step aside so the form gets the room.
+const EDITING = ['recipeEdit', 'recipeImport', 'ingredient', 'member'];
+
+function countBadge(n) {
+  return n ? html`<span class="count" aria-hidden="true">${n > 99 ? '99+' : n}</span>` : '';
+}
+
+function nav(route, shopN) {
+  const here = (names) => (names.includes(route.name) ? html` aria-current="page"` : '');
+  return html`<nav class="nav" aria-label="Main">${TABS.map(([key, label, href, names]) => html`<a href="${href}"${here(names)}><span class="pill">${icon(key, 22, 1.9)}</span><span>${label}</span></a>`)}
+<div class="rail-extra"><a href="#/shopping"${here(['shopping'])} aria-label="Shopping list${shopN ? `, ${shopN} items` : ''}"><span class="pill">${icon('cart', 22, 1.9)}${countBadge(shopN)}</span><span>Shopping</span></a>
+<a href="#/settings"${here(['settings'])}><span class="pill">${icon('gear', 22, 1.9)}</span><span>Settings</span></a></div></nav>`;
+}
+
+/** Phone only: the app name, the shopping list and settings, above every main screen. */
+function appBar(route, shopN) {
+  if (EDITING.includes(route.name) || route.name === 'settings') return '';
+  return html`<header class="appbar"><span class="brand">Table Reset</span>
+<a class="icon-btn bare" href="#/shopping"${route.name === 'shopping' ? html` aria-current="page"` : ''} aria-label="Shopping list${shopN ? `, ${shopN} items` : ''}">${icon('cart', 22, 1.9)}${countBadge(shopN)}</a>
+<a class="icon-btn bare" href="#/settings" aria-label="Settings">${icon('gear', 22, 1.9)}</a></header>`;
 }
 
 function sheetHtml() {
@@ -77,7 +96,8 @@ function render() {
   let sel = null;
   try { sel = key && active.selectionStart != null ? [active.selectionStart, active.selectionEnd] : null; } catch (e) { sel = null; }
   const view = routes[ui.route.name] || routes.plan;
-  root.innerHTML = String(html`<div class="app">${nav(ui.route)}${view(ui.route.params)}</div>${sheetHtml()}${toastHtml()}${saveFailed ? html`<p class="notice warn" role="alert" style="position:fixed;top:8px;left:8px;right:8px;z-index:70">This device couldn’t save your last change. Free up storage, or download a backup in Settings.</p>` : ''}`);
+  const shopN = shoppingCount();
+  root.innerHTML = String(html`<div class="app${EDITING.includes(ui.route.name) ? ' editing' : ''}">${nav(ui.route, shopN)}<div class="page">${appBar(ui.route, shopN)}${view(ui.route.params)}</div></div>${sheetHtml()}${toastHtml()}${saveFailed ? html`<p class="notice warn" role="alert" style="position:fixed;top:8px;left:8px;right:8px;z-index:70">This device couldn’t save your last change. Free up storage, or download a backup in Settings.</p>` : ''}`);
   if (key) {
     const el = root.querySelector(`[data-key="${CSS.escape(key)}"]`);
     if (el) {
@@ -109,6 +129,7 @@ root.addEventListener('click', (e) => {
   if (!el) return;
   const name = el.dataset.action;
   if (name === 'close-sheet') { closeSheet(); return; }
+  if (name === 'go-back') { if (history.length > 1) history.back(); else location.hash = '#/plan'; return; }
   if (name === 'toast-undo') {
     const undo = ui.toast && ui.toast.undo;
     ui.toast = null;

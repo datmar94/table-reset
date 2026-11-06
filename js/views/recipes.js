@@ -31,7 +31,7 @@ function donut(n) {
 <circle cx="50" cy="50" r="40" fill="none" stroke-width="13" style="stroke:var(--protein)" stroke-dasharray="${pl.toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 50 50)"></circle>
 <circle cx="50" cy="50" r="40" fill="none" stroke-width="13" style="stroke:var(--carbs)" stroke-dasharray="${cl.toFixed(1)} ${C.toFixed(1)}" stroke-dashoffset="${(-pl).toFixed(1)}" transform="rotate(-90 50 50)"></circle>
 <circle cx="50" cy="50" r="40" fill="none" stroke-width="13" style="stroke:var(--fat)" stroke-dasharray="${fl.toFixed(1)} ${C.toFixed(1)}" stroke-dashoffset="${(-(pl + cl)).toFixed(1)}" transform="rotate(-90 50 50)"></circle></svg>
-<div class="center" aria-hidden="true"><strong class="num" style="font-size:22px">${fmtInt(n.kcal)}</strong><span>kcal / serving</span></div></div>`;
+<div class="center" aria-hidden="true"><strong class="num" style="font-size:22px">${fmtInt(n.kcal)}</strong><span>kcal</span></div></div>`;
 }
 
 function detail(r, m) {
@@ -55,19 +55,18 @@ ${missing.length ? html`<p class="notice warn">${missing.length} ingredient${mis
 <section class="card col-side tight"><span class="bold">Cook</span>${stepper(servingsText(cook), 'cook-less', 'cook-more', ` data-id="${r.id}"`, ['Fewer servings', 'More servings'])}
 <span class="tiny muted">${shorts ? `${shorts} item${shorts === 1 ? ' is' : 's are'} short for this many servings.` : 'You have everything for this many servings.'}</span>
 ${shorts ? html`<button type="button" class="btn outline" data-action="shop-add-missing" data-id="${r.id}">${icon('list', 18)}Add missing to shopping list</button>` : ''}</section></div>
-<section class="card"><div class="spread"><h2>Ingredients for ${servingsText(cook)}</h2><span class="small muted">Cooking takes these out of stock</span></div>
-<div class="table-wrap"><table class="table"><thead><tr><th scope="col">Ingredient</th><th scope="col">Uses</th><th scope="col">kcal</th><th scope="col" style="text-align:right">In stock → after</th></tr></thead><tbody>
-${needs.map((x) => {
+<section class="card"><div><h2>Ingredients for ${servingsText(cook)}</h2><span class="small muted">Cooking takes these out of stock</span></div>
+<ul class="ing-lines">${needs.map((x) => {
     const unit = x.ing ? x.ing.stockUnit : x.item.unit;
     const k = cook / r.servings;
     const kcal = x.ing ? recipeNutrition({ servings: 1, items: [x.item] }, m.ingById).total.kcal * k : 0;
-    return html`<tr><th scope="row" style="font-weight:600">${x.ing ? x.ing.name : 'Deleted ingredient'}</th><td>${fmtAmount(x.item.qty * k, x.item.unit)}</td><td class="num">${fmtInt(kcal)}</td>
-<td style="text-align:right">${!x.ing ? html`<span class="badge warn">Not in your list</span>` : !Number.isFinite(x.need) ? html`<span class="badge warn">Unit doesn’t match</span>` : x.short ? html`<span class="badge warn">${x.have > 0 ? `Short by ${fmtAmount(fromBase(x.need - x.have, unit), unit)}` : 'Out of stock'}</span>` : html`<span class="num">${fmtAmount(fromBase(x.have, unit), unit)} → <strong>${fmtAmount(fromBase(x.after, unit), unit)}</strong></span>`}</td></tr>`;
-  })}</tbody></table></div></section>
+    return html`<li><div class="spread" style="align-items:flex-start"><span class="bold">${x.ing ? x.ing.name : 'Deleted ingredient'}</span><span class="num bold nw">${fmtAmount(x.item.qty * k, x.item.unit)}</span></div>
+<div class="spread small"><span class="muted num">${fmtInt(kcal)} kcal</span>${!x.ing ? html`<span class="badge warn">Not in your list</span>` : !Number.isFinite(x.need) ? html`<span class="badge warn">Unit doesn’t match</span>` : x.short ? html`<span class="badge warn">${x.have > 0 ? `Short by ${fmtAmount(fromBase(x.need - x.have, unit), unit)}` : 'Out of stock'}</span>` : html`<span class="muted num">In stock ${fmtAmount(fromBase(x.have, unit), unit)} → <strong style="color:var(--ink)">${fmtAmount(fromBase(x.after, unit), unit)}</strong></span>`}</div></li>`;
+  })}</ul></section>
 ${r.steps && r.steps.length ? html`<section class="card"><h2>Steps</h2><ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;line-height:1.5">${r.steps.map((s) => html`<li>${s}</li>`)}</ol></section>` : ''}
-<div class="row wrap"><button type="button" class="btn primary lg" style="flex:1" data-action="cook" data-id="${r.id}">Cook ${servingsText(cook)} & update stock</button>
-<button type="button" class="btn outline lg" style="flex:1" data-action="log-recipe" data-id="${r.id}">Log a serving for…</button>
-<button type="button" class="btn plain lg" style="flex:1" data-action="plan-recipe" data-id="${r.id}">Add to meal plan</button></div>
+<div class="action-bar"><button type="button" class="btn plain lg" data-action="plan-recipe" data-id="${r.id}">Add to plan</button>
+<button type="button" class="btn outline lg" data-action="log-recipe" data-id="${r.id}">Log a serving</button>
+<button type="button" class="btn primary lg" data-action="cook" data-id="${r.id}" aria-label="Cook ${servingsText(cook)} and take the ingredients out of stock">Cook ${cook}</button></div>
 <button type="button" class="btn danger" data-action="recipe-delete" data-id="${r.id}" style="align-self:flex-start">${icon('trash', 18)}Delete recipe</button>
 </article>`;
 }
@@ -76,19 +75,21 @@ function render(params) {
   const d = getData();
   const m = maps();
   const id = params.id || null;
-  const r = id ? m.recipeById[id] : null;
   const q = (ui.recipeQuery || '').trim().toLowerCase();
   const filter = ui.recipeFilter || 'all';
   const shown = d.recipes
     .filter((x) => filter === 'all' || (filter === 'ready' ? shortCount(x, 1, m.ingById) === 0 : x.meals.includes(filter)))
     .filter((x) => !q || x.name.toLowerCase().includes(q) || x.items.some((it) => (m.ingById[it.ingredientId] || { name: '' }).name.toLowerCase().includes(q)))
     .sort((a, b) => a.name.localeCompare(b.name));
+  // On a tablet the first recipe opens beside the list instead of an empty panel.
+  const wide = window.matchMedia('(min-width: 1000px)').matches;
+  const r = id ? m.recipeById[id] : wide ? shown[0] || null : null;
   const list = html`<div class="split-list stack">
 <header class="page-head"><div><h1>Recipes</h1><p class="sub">Macros shown per serving</p></div>
 <button type="button" class="btn primary" data-action="add-recipe" aria-haspopup="dialog">${icon('plus', 18, 2.2)}Add recipe</button></header>
 <label class="search">${icon('search')}<span class="sr-only">Search recipes</span><input type="search" placeholder="Search recipes or ingredients" data-field="recipe-query" data-key="recipe-query" value="${ui.recipeQuery || ''}"></label>
-<div class="chips" role="group" aria-label="Filter recipes">${FILTERS.map(([fid, label]) => html`<button type="button" class="chip" data-action="recipe-filter" data-value="${fid}"${pressed(filter === fid)}>${label}</button>`)}</div>
-${!d.recipes.length ? html`<p class="empty">No recipes yet. Tap “Add recipe” to type one in or paste one from a website.</p>` : !shown.length ? html`<p class="empty">No saved recipes match.</p>` : shown.map((x) => listCard(x, m, x.id === id))}
+<div class="chips scroll" role="group" aria-label="Filter recipes">${FILTERS.map(([fid, label]) => html`<button type="button" class="chip" data-action="recipe-filter" data-value="${fid}"${pressed(filter === fid)}>${label}</button>`)}</div>
+${!d.recipes.length ? html`<p class="empty">No recipes yet. Tap “Add recipe” to type one in or paste one from a website.</p>` : !shown.length ? html`<p class="empty">No saved recipes match.</p>` : shown.map((x) => listCard(x, m, !!r && x.id === r.id))}
 </div>`;
   return html`<main class="main" id="main"><div class="split${r ? ' has-detail' : ''}">${list}
 <div class="split-detail">${r ? html`<a class="btn ghost only-narrow" href="#/recipes" style="align-self:flex-start;margin:-8px 0 4px -10px">${icon('back', 20)}All recipes</a>${detail(r, m)}`
@@ -171,7 +172,7 @@ export const recipesView = {
         d.shopping = d.shopping.filter((s) => !(s.recipeId === r.id && adds.some((a) => a.ingredientId === s.ingredientId)));
         d.shopping.push(...adds);
       });
-      toast(`Added ${adds.length} item${adds.length === 1 ? '' : 's'} to the shopping list on the Meal plan tab.`);
+      toast(`Added ${adds.length} item${adds.length === 1 ? '' : 's'} to the shopping list.`);
     },
     'log-recipe': ({ ds }) => {
       const r = maps().recipeById[ds.id];
