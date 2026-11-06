@@ -1,10 +1,10 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'table-reset-v6';
+const CACHE = 'table-reset-v7';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/main.js', 'js/app.js', 'js/store.js', 'js/ui.js', 'js/nutrition.js', 'js/seed.js', 'js/foods.js', 'js/scan.js',
   'js/views/plan.js', 'js/views/recipes.js', 'js/views/recipeEdit.js', 'js/views/suggested.js',
-  'js/views/ingredients.js', 'js/views/progress.js', 'js/views/members.js', 'js/views/settings.js', 'js/views/shopping.js',
+  'js/views/ingredients.js', 'js/views/progress.js', 'js/views/members.js', 'js/views/settings.js', 'js/views/shopping.js', 'js/sync.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
 ];
 
@@ -25,7 +25,7 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(req, sameSite ? { cache: 'no-cache' } : {})
       .then((res) => {
-        if (res.ok && (new URL(req.url).origin === self.location.origin || req.url.startsWith('https://fonts.'))) {
+        if (res.ok && (new URL(req.url).origin === self.location.origin || req.url.startsWith('https://fonts.') || req.url.startsWith('https://www.gstatic.com/firebasejs/'))) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(req, copy));
         }

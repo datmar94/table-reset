@@ -1,5 +1,5 @@
-// App data lives in this browser for now. Household data (members, food, recipes, log) is
-// kept apart from device settings (appearance) so sync can later share one but not the other.
+// App data lives in this browser, and sync.js copies it to Firebase when sync is on. Household data
+// (members, food, recipes, log) is kept apart from device settings (appearance), which never sync.
 
 const DATA_KEY = 'mealmacros.data.v1';
 const DEVICE_KEY = 'mealmacros.device.v1';

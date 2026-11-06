@@ -6,6 +6,7 @@ import { baseAmount, unitsFor } from '../js/nutrition.js';
 import { sampleData } from '../js/seed.js';
 import { byId } from '../js/store.js';
 import { shoppingRows } from '../js/views/shopping.js';
+import { applyDocs, changesSince, combine, dataFrom, itemsOf } from '../js/sync.js';
 
 const results = [];
 function test(name, fn) {
@@ -200,6 +201,38 @@ test('Shopping list: planned meals, staples and packages', () => {
   eq(by.e.buy, 5, 'a low staple is brought back to twice its low mark');
   eq(by.s.buy, null, 'nothing to go on: the app asks');
   eq(by.o.buy, 250); eq(by.o.reasons[0], 'added by you');
+});
+
+test('Sync sends only changed records and merges other devices’ changes', () => {
+  const d = { version: 1, updatedAt: 5, settings: { defaultUnits: 'imperial' }, members: [{ id: 'm1', name: 'Alex' }], ingredients: [{ id: 'i1', name: 'Oats' }, { id: 'i2', name: 'Eggs' }], recipes: [], entries: [], shopping: [] };
+  const first = changesSince(d, {}, 'tab');
+  eq(first.map((x) => x.key).sort().join(','), '_~settings,ingredients~i1,ingredients~i2,members~m1', 'everything once, never version or updatedAt');
+  const known = Object.fromEntries(first.map((x) => [x.key, x.h]));
+  eq(changesSince(d, known, 'tab').length, 0, 'nothing new to send');
+  // The phone builds the same data from the records.
+  const docs = first.map((x) => ({ ...x, t: { s: 1, n: 0 } }));
+  const phone = dataFrom(docs);
+  eq(phone.ingredients.map((x) => x.name).join(','), 'Oats,Eggs', 'order kept');
+  eq(phone.settings.defaultUnits, 'imperial');
+  // One edit and one delete on the tablet: two records.
+  const d2 = JSON.parse(JSON.stringify(d));
+  d2.ingredients[0].name = 'Rolled oats';
+  d2.ingredients.splice(1, 1);
+  const two = changesSince(d2, known, 'tab');
+  eq(two.map((x) => `${x.key}${x.del ? ' deleted' : ''}`).sort().join(','), 'ingredients~i1,ingredients~i2 deleted');
+  // The phone applies them; a record the phone changed and hasn't sent yet keeps the phone's version.
+  const phoneKnown = { ...known };
+  phone.members[0].name = 'Alex B';
+  const back = applyDocs(phone, [...two, { key: 'members~m1', c: 'members', k: 'm1', o: 0, v: JSON.stringify({ id: 'm1', name: 'Alex T' }) }, { key: 'recipes~r1', c: 'recipes', k: 'r1', o: 0, v: JSON.stringify({ id: 'r1', name: 'Oatmeal' }) }], phoneKnown);
+  eq(back.data.ingredients.map((x) => x.name).join(','), 'Rolled oats');
+  eq(back.data.members[0].name, 'Alex B', 'unsent change on this device wins');
+  eq(back.data.recipes[0].name, 'Oatmeal', 'new record added');
+  eq(back.applied.includes('members~m1'), false);
+  // Combining keeps this device's records and adds the synced ones it doesn't have.
+  const mine = { ...d, ingredients: [{ id: 'i9', name: 'Rice' }, { id: 'i1', name: 'My oats' }] };
+  const both = combine(mine, docs);
+  eq(both.ingredients.map((x) => x.name).join(','), 'Rice,My oats,Eggs');
+  eq(Object.keys(itemsOf(both)).length, 5);
 });
 
 const out = document.getElementById('out');

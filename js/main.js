@@ -10,6 +10,7 @@ import { progressView } from './views/progress.js';
 import { membersView } from './views/members.js';
 import { settingsView } from './views/settings.js';
 import { shoppingView, shoppingCount } from './views/shopping.js';
+import { startSync } from './sync.js';
 
 const VIEWS = [planView, recipesView, recipeEditView, suggestedView, ingredientsView, progressView, membersView, settingsView, shoppingView];
 const routes = Object.assign({}, ...VIEWS.map((v) => v.routes));
@@ -161,6 +162,7 @@ subscribe(render);
 window.addEventListener('hashchange', onRoute);
 if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
 onRoute();
+startSync();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

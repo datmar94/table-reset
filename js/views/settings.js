@@ -3,6 +3,7 @@ import { ui, openSheet, closeSheet, toast } from '../app.js';
 import { dayKey } from '../nutrition.js';
 import { html, icon, avatar, seg } from '../ui.js';
 import { sampleData } from '../seed.js';
+import { sync, syncOn, signIn, signOutSync, retrySync, offerChoice, chooseData, preloadSync } from '../sync.js';
 
 const MODES = [
   ['auto', 'Auto', 'Day normally, Night when this device is in dark mode', '#F6F3EA', '#0F0F10', '#C9A23F'],
@@ -14,12 +15,56 @@ function swatch(left, right, dot) {
   return html`<svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><rect x="0.5" y="0.5" width="21.5" height="43" rx="10" fill="${left}"></rect><rect x="22" y="0.5" width="21.5" height="43" rx="10" fill="${right}"></rect><rect x="0.5" y="0.5" width="43" height="43" rx="12" fill="none" stroke="#8C8778"></rect><circle cx="22" cy="22" r="7" fill="${dot}"></circle></svg>`;
 }
 
+function syncStatus() {
+  if (!navigator.onLine) return 'Offline. Changes are saved on this device and sync when it’s back online.';
+  if (sync.status === 'syncing' || sync.status === 'loading') return 'Syncing…';
+  const at = sync.lastAt && Date.now() - sync.lastAt > 60000 ? ` · ${new Date(sync.lastAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ' · just now';
+  return `Up to date${sync.lastAt ? at : ''}. Changes show up on your other devices in a few seconds.`;
+}
+
+function syncCard() {
+  const s = sync;
+  const badge = s.status === 'error' ? html`<span class="badge warn">Stopped</span>` : s.user && s.status !== 'choose' ? html`<span class="badge ok">On</span>` : html`<span class="badge muted">Off</span>`;
+  const error = s.error ? html`<p class="notice warn">${s.error}</p>` : '';
+  if (s.status === 'choose') {
+    return html`<section class="card" aria-labelledby="sync-h"><div class="spread"><h2 id="sync-h">Sync</h2>${badge}</div>
+<p>Signed in as <strong>${s.user.email}</strong>. Choose what to keep to finish turning sync on.</p>
+<div class="row"><button type="button" class="btn primary" data-action="sync-choose">Choose what to keep</button><button type="button" class="btn plain" data-action="sync-sign-out">Cancel</button></div></section>`;
+  }
+  if (!s.user || (s.status === 'error' && !syncOn())) {
+    return html`<section class="card" aria-labelledby="sync-h"><div class="spread"><h2 id="sync-h">Sync</h2>${badge}</div>
+<p>Keep your phone and tablet showing the same members, food, recipes, meals and shopping list. Sign in with Google on each device.</p>
+${error}
+<button type="button" class="btn primary" data-action="sync-sign-in"${s.status === 'loading' ? html` disabled` : ''}>${s.status === 'loading' ? 'Signing in…' : 'Sign in with Google'}</button>
+<p class="tiny muted">Start on the device that has the data you want to keep. Appearance stays separate on each device.</p></section>`;
+  }
+  return html`<section class="card" aria-labelledby="sync-h"><div class="spread"><h2 id="sync-h">Sync</h2>${badge}</div>
+<p>Signed in as <strong>${s.user.email}</strong>.</p>
+${s.status === 'error' ? html`${error}<button type="button" class="btn primary" data-action="sync-retry">Try again</button>` : html`<p class="small muted" role="status">${syncStatus()}</p>`}
+<button type="button" class="btn plain" data-action="sync-sign-out">Turn off sync on this device</button>
+<p class="tiny muted">Turning it off keeps everything on this device. It just stops sharing changes.</p></section>`;
+}
+
+function choiceSheet(sheet) {
+  const n = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+  const line = (c) => `${n(c.members, 'member')}, ${n(c.ingredients, 'ingredient')}, ${n(c.recipes, 'recipe')}, ${n(c.entries, 'planned or logged meal')}`;
+  return html`<h2 id="sheet-title">This account already has synced data</h2>
+<p class="small"><strong>Synced:</strong> ${line(sheet.theirs)}.<br><strong>This device:</strong> ${line(sheet.mine)}.</p>
+<button type="button" class="btn primary lg" data-action="sync-use">Use the synced data</button>
+<p class="tiny muted" style="margin-top:-6px">Replaces what’s on this device. Pick this when your other device has the data you want.</p>
+<button type="button" class="btn plain lg" data-action="sync-combine">Combine both</button>
+<p class="tiny muted" style="margin-top:-6px">Keeps everything from both. Food or recipes you added on both devices will show up twice.</p>
+<button type="button" class="btn ghost" data-action="close-sheet">Not now</button>`;
+}
+
 function render() {
+  setTimeout(preloadSync, 0);
   const d = getData();
   const dev = getDevice();
   return html`<main class="main" id="main">
 <div class="topbar"><button type="button" class="icon-btn bare lg" data-action="go-back" aria-label="Back">${icon('back', 24)}</button><h1>Settings</h1></div>
 <div class="cols"><div class="col-main stack">
+${syncCard()}
 <section class="card" aria-labelledby="appearance-h"><h2 id="appearance-h">Appearance</h2>
 <div class="stack" role="radiogroup" aria-labelledby="appearance-h" style="gap:8px">${MODES.map(([id, label, desc, l, r, dot]) => html`<button type="button" class="choice" role="radio" aria-checked="${dev.appearance === id ? 'true' : 'false'}" data-action="set-appearance" data-value="${id}">${swatch(l, r, dot)}<span class="tx" style="flex:1"><strong>${label}</strong><span>${desc}</span></span>${dev.appearance === id ? icon('check', 22, 2.6) : ''}</button>`)}</div>
 <p class="small muted">Each device keeps its own choice.</p></section>
@@ -33,8 +78,6 @@ ${seg([['imperial', 'lb · ft/in'], ['metric', 'kg · cm']], d.settings.defaultU
 <p class="small">To get your own free key: open <strong>api.data.gov/signup</strong>, enter your name and email, and the key arrives by email. Paste it here.</p>
 <label class="field">Your USDA key<input class="input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-field="food-key" data-key="food-key" value="${d.settings.foodKey || ''}" placeholder="Using the shared demo key"></label>
 <p class="tiny muted">Barcode lookups use Open Food Facts, which needs no key.</p></section>
-<section class="card"><div class="spread"><h2>Sync</h2><span class="badge muted">Not set up yet</span></div>
-<p>Right now everything is saved on this device only. Syncing your phone and tablet is the next step to build. Until then you can move data with a backup file below.</p></section>
 </div>
 <div class="col-side stack">
 <section class="card tight" aria-labelledby="members-h"><h2 id="members-h">Household members</h2>
@@ -44,16 +87,17 @@ ${d.members.length ? d.members.map((m) => html`<a class="link-row" href="#/membe
 <button type="button" class="btn plain" data-action="export-data">${icon('copy', 18)}Download a backup file</button>
 <label class="btn plain" style="position:relative">Restore from a backup file<input type="file" accept="application/json,.json" data-field="import-file" class="sr-only"></label>
 <button type="button" class="btn plain" data-action="ask-sample">Load the sample household</button>
-<button type="button" class="btn danger" data-action="ask-erase">${icon('trash', 18)}Erase everything on this device</button>
+<button type="button" class="btn danger" data-action="ask-erase">${icon('trash', 18)}${syncOn() ? 'Erase everything' : 'Erase everything on this device'}</button>
 </section></div></div>
 </main>`;
 }
 
 function confirmSheet(sheet) {
+  const where = syncOn() ? 'on this device and your other synced devices' : 'on this device';
   const copy = {
-    sample: ['Load the sample household?', 'This replaces everything saved on this device with sample members, food and recipes.', 'Load sample'],
-    erase: ['Erase everything?', 'This deletes all members, ingredients, recipes and logs on this device. Download a backup first if you might want them back.', 'Erase'],
-    restore: ['Restore this backup?', `This replaces everything on this device with the backup from ${sheet.when || 'that file'}.`, 'Restore'],
+    sample: ['Load the sample household?', `This replaces everything ${where} with sample members, food and recipes.`, 'Load sample'],
+    erase: ['Erase everything?', `This deletes all members, ingredients, recipes and logs ${where}. Download a backup first if you might want them back.`, 'Erase'],
+    restore: ['Restore this backup?', `This replaces everything ${where} with the backup from ${sheet.when || 'that file'}.`, 'Restore'],
   }[sheet.kind];
   return html`<h2 id="sheet-title">${copy[0]}</h2><p>${copy[1]}</p>
 <div class="row"><button type="button" class="btn plain lg" data-action="close-sheet" style="flex:1">Cancel</button><button type="button" class="btn primary lg" data-action="confirm-data" style="flex:1">${copy[2]}</button></div>`;
@@ -74,6 +118,12 @@ export const settingsView = {
       a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     },
+    'sync-sign-in': () => signIn(),
+    'sync-sign-out': () => signOutSync(),
+    'sync-retry': () => retrySync(),
+    'sync-choose': () => offerChoice(),
+    'sync-use': () => chooseData('remote'),
+    'sync-combine': () => chooseData('combine'),
     'ask-sample': () => openSheet({ type: 'confirm-data', kind: 'sample' }),
     'ask-erase': () => openSheet({ type: 'confirm-data', kind: 'erase' }),
     'confirm-data': () => {
@@ -107,5 +157,5 @@ export const settingsView = {
       el.value = '';
     },
   },
-  sheets: { 'confirm-data': confirmSheet },
+  sheets: { 'confirm-data': confirmSheet, 'sync-choice': choiceSheet },
 };

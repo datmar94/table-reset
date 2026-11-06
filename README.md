@@ -27,7 +27,7 @@ Open http://localhost:8765/tests/ while the server is running. It runs the check
 | Ingredients | Stock amounts with − / +, low and out status, staples. **Look up nutrition** (USDA FoodData Central) or **Scan** a barcode (Open Food Facts); scanning a known product adds a package to stock |
 | Progress | Every member's day: calories ring, macro bars, weight trend, log weight; a 7-day summary |
 | Member profile | Targets from the Mifflin-St Jeor formula, updated as you type; lose / maintain / gain with pace and goal date; units per member; your own targets if you prefer |
-| Settings | Gear button at the top of every phone screen (Settings in the tablet's side rail). Appearance (Auto / Day / Night, per device), household members, units for new members, backup download and restore, sample data, erase |
+| Settings | Gear button at the top of every phone screen (Settings in the tablet's side rail). Sync (sign in with Google), appearance (Auto / Day / Night, per device), household members, units for new members, backup download and restore, sample data, erase |
 
 ## Food lookups
 
@@ -35,18 +35,23 @@ Nutrition lookup uses the USDA FoodData Central API. Without a key it uses the s
 
 ## Where data lives
 
-Everything is saved in the browser on each device (`localStorage`). Household data and the device's appearance setting are kept separately, so sync can share the first and not the second. Use **Settings › Download a backup file** to keep a copy or move data between devices until sync exists.
+Everything is saved in the browser on each device (`localStorage`), so the app works offline. With **Settings › Sync** turned on, `js/sync.js` also copies household data to Firebase Firestore (project `table-reset`) and listens for changes from the other devices. The device's appearance setting never syncs.
+
+- Each member, food, recipe, meal and shopping item is its own document under `households/home/items`, so edits on two devices merge item by item. If both devices change the same item before syncing, the change that hasn't been sent yet wins.
+- Sign-in is Google through Firebase Authentication. The Firestore rules only let the household's listed Gmail addresses read or write; add an address there to let a new person in.
+- The Firebase web config in `js/sync.js` isn't a secret. The rules are what protect the data.
+
+**Settings › Download a backup file** still works for keeping a copy.
 
 ## Not built yet
 
-- Sync between phone and tablet (needs an online database and sign-in)
-- Hosting at a web address, so the phone can install it (needs HTTPS)
-- Importing a recipe straight from a web link (needs a small server, comes with sync)
+- Importing a recipe straight from a web link (needs a small server)
 
 ## Code layout
 
 - `js/nutrition.js`: pure math (units, targets, recipe totals, stock, dates, formatting)
 - `js/store.js`: saved data and device settings
+- `js/sync.js`: Firebase sign-in and record-by-record sync
 - `js/app.js`: shared screen state, navigation, toasts, sheets, selectors
 - `js/ui.js`: escaped HTML templates, icons and shared pieces
 - `js/views/*.js`: one file per screen, each with its routes, actions, fields and sheets
