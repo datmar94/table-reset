@@ -1,5 +1,5 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'table-reset-v8';
+const CACHE = 'table-reset-v9';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/main.js', 'js/app.js', 'js/store.js', 'js/ui.js', 'js/nutrition.js', 'js/kitchen.js', 'js/seed.js', 'js/foods.js', 'js/scan.js',
