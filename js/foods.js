@@ -1,6 +1,7 @@
 // Nutrition lookup: USDA FoodData Central for plain foods, Open Food Facts for barcodes.
 // The parsing functions are pure so the checks can run them on saved sample responses.
 import { kindOf, toBase } from './nutrition.js';
+import { singular } from './kitchen.js';
 
 const USDA = 'https://api.nal.usda.gov/fdc/v1';
 const OFF = 'https://world.openfoodfacts.org/api/v2/product/';
@@ -108,9 +109,48 @@ async function getJson(url, init) {
 }
 
 /** Search plain foods by name. */
+// ---------- Matching search results to a food name ----------
+
+export const FILLER = new Set(['chopped', 'diced', 'fresh', 'minced', 'sliced', 'to', 'taste', 'of', 'and', 'or', 'large', 'small', 'medium', 'whole', 'finely', 'roughly', 'halved', 'trimmed', 'cooked', 'raw', 'boneless', 'skinless', 'about', 'plus', 'more', 'for', 'serving', 'divided', 'optional', 'the', 'a', 'into', 'cut', 'pieces', 'peeled', 'ground']);
+export const words = (s) => s.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean).map(singular);
+
+// USDA names start with the food itself ("Apples, gala, raw"), sometimes after a class word ("Spices, cinnamon, ground").
+const CLASS_WORDS = new Set(['spice', 'oil', 'sugar', 'leavening', 'agent', 'beverage', 'nut', 'seed', 'fish', 'vegetable', 'fruit']);
+// Plain, everyday forms win ties; processed or unusual forms lose unless the recipe says so.
+const PLAIN = new Set(['raw', 'whole', 'fresh', 'plain', 'granulated', 'purpose', 'table', 'unsalted', 'salted']);
+const UNUSUAL = new Set(['babyfood', 'infant', 'dried', 'dehydrated', 'powder', 'sheep', 'goat', 'buffalo', 'canned', 'frozen', 'imitation', 'substitute', 'reduced', 'nonfat', 'lowfat', 'industrial', 'commercial', 'restaurant', 'prepared', 'sweetened', 'sulfured', 'candied', 'fried', 'toasted', 'dessert', 'supplement', 'cooked', 'boiled', 'roasted']);
+
+/** How plainly a search hit is the food asked for: 0 when its name doesn't mention it. */
+function hitScore(name, h) {
+  const want = words(name).filter((w) => !FILLER.has(w));
+  const asked = new Set(words(name));
+  const parts = h.name.split(',').map(words);
+  const have = new Set(parts.flat());
+  const covered = want.filter((w) => have.has(w)).length / Math.max(1, want.length);
+  if (!covered) return 0;
+  // What the food is: the first part of the name, plus the next one when the first is just a class like "Spices".
+  const head = parts[0].every((w) => CLASS_WORDS.has(w)) && parts[1] ? [...parts[0], ...parts[1]] : parts[0];
+  const named = head.some((w) => asked.has(w) && !CLASS_WORDS.has(w)) || head.every((w) => asked.has(w));
+  const extra = head.filter((w) => !asked.has(w) && !CLASS_WORDS.has(w)).length;
+  let score = covered + (named ? 0.4 : 0) - extra * 0.2 - have.size * 0.01;
+  for (const w of have) if (!asked.has(w)) score += PLAIN.has(w) ? 0.05 : UNUSUAL.has(w) ? -0.1 : 0;
+  return Math.max(score, 0.001);
+}
+
+/** Search hits ordered so the plainest form of the food asked for comes first. Hits that don't name it at all go last. */
+export function rankHits(name, hits) {
+  return hits.map((h, i) => ({ h, i, score: hitScore(name, h) })).sort((a, b) => b.score - a.score || a.i - b.i).map((x) => x.h);
+}
+
+/** The search hit that is most plainly the food the recipe asked for, or null when none names it. */
+export function bestHit(name, hits) {
+  const top = rankHits(name, hits)[0];
+  return top && hitScore(name, top) > 0 ? top : null;
+}
+
 export async function searchFoods(query, key = DEMO_KEY) {
   const q = encodeURIComponent(query.trim());
-  const url = `${USDA}/foods/search?query=${q}&dataType=Foundation,SR%20Legacy&pageSize=8&api_key=${encodeURIComponent(key || DEMO_KEY)}`;
+  const url = `${USDA}/foods/search?query=${q}&dataType=Foundation,SR%20Legacy&pageSize=25&api_key=${encodeURIComponent(key || DEMO_KEY)}`;
   const json = await getJson(url);
   return (json.foods || []).map(usdaHit);
 }

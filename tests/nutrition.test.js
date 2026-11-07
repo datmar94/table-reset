@@ -1,7 +1,7 @@
 // Checks for the math that everything else relies on. Open tests/index.html to run them.
 import { addDays, fmtNum, goalDate, macroSplit, nutrientsFor, recipeNutrition, stockNeeds, stockStatus, targets, toBase, weekStart, LB_PER_KG } from '../js/nutrition.js';
 import { parseLine, matchIngredient, bestHit, newFood } from '../js/views/recipeEdit.js';
-import { buildFood, offProduct, portionUnit, servingPortion, usdaHit, usdaPortions } from '../js/foods.js';
+import { buildFood, offProduct, rankHits, portionUnit, servingPortion, usdaHit, usdaPortions } from '../js/foods.js';
 import { baseAmount, unitsFor, amountAs, stockAmount, withMeasures, measureAsk, withSwaps, startAmount, cupWeight, fmtAmount } from '../js/nutrition.js';
 import { guessCategory, categoryOf, migrateCategories, sizePreset } from '../js/kitchen.js';
 import { sampleData } from '../js/seed.js';
@@ -171,6 +171,15 @@ test('Import keeps lines that aren’t in Ingredients', () => {
   const pick = bestHit('chicken breast', [{ name: 'Lunchmeat, chicken breast, sliced' }, { name: 'Chicken, broilers or fryers, breast, meat only, raw' }]);
   eq(pick.name, 'Chicken, broilers or fryers, breast, meat only, raw');
   eq(bestHit('saffron', [{ name: 'Beef, ground' }]), null);
+});
+test('Nutrition lookup picks the plain food, not a dish that mentions it', () => {
+  const L = (...names) => names.map((name) => ({ name }));
+  eq(bestHit('Apples', L('Croissants, apple', 'Fruit butters, apple', 'Rose-apples, raw', 'Apples, dried, sulfured, uncooked', 'Apples, fuji, with skin, raw')).name, 'Apples, fuji, with skin, raw');
+  eq(bestHit('Milk', L('Crackers, milk', 'Candies, milk chocolate', 'Milk, sheep, fluid', 'Milk, whole, 3.25% milkfat, with added vitamin D')).name, 'Milk, whole, 3.25% milkfat, with added vitamin D');
+  eq(bestHit('Cinnamon', L('Bread, cinnamon', 'Bagels, cinnamon-raisin', 'Spices, cinnamon, ground')).name, 'Spices, cinnamon, ground');
+  eq(bestHit('sugar', L('Cookies, sugar', 'Sugars, brown', 'Sugars, granulated')).name, 'Sugars, granulated');
+  eq(bestHit('olive oil', L('Olives, ripe, canned', 'Salad dressing, olive oil', 'Oil, olive, salad or cooking')).name, 'Oil, olive, salad or cooking');
+  eq(rankHits('milk', L('Crackers, milk', 'Milk, whole, 3.25% milkfat'))[0].name, 'Milk, whole, 3.25% milkfat');
 });
 test('Recipes using cups of a food stocked in grams take the right amount', () => {
   const flour = { id: 'f', basis: { qty: 100, unit: 'g' }, per: { kcal: 364, p: 10, c: 76, f: 1 }, convert: [{ unit: 'ml', qty: 1, base: 125 / 236.588 }], stock: 500, stockUnit: 'g' };

@@ -34,7 +34,8 @@ const WORDS = {
 const BY_WORD = {};
 for (const [cat, list] of Object.entries(WORDS)) for (const w of list.split(' ')) BY_WORD[w] = cat;
 
-function singular(w) {
+/** "apples" → "apple", "tomatoes" → "tomato", "cherries" → "cherry". */
+export function singular(w) {
   if (/ies$/.test(w)) return w.slice(0, -3) + 'y';
   if (/(oes|ches|shes|sses|xes)$/.test(w)) return w.slice(0, -2);
   if (/[^s]s$/.test(w) && w.length > 3) return w.slice(0, -1);

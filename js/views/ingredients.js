@@ -2,7 +2,7 @@ import { getData, update, uid } from '../store.js';
 import { ui, go, openSheet, closeSheet, toast, refresh } from '../app.js';
 import { baseAmount, cupWeight, fmtAmount, fmtInt, fmtNum, kindOf, measureAsk, pieceWeight, stockIn, stockStatus, toBase, UNITS, withMeasures } from '../nutrition.js';
 import { CATEGORIES, categoryOf, guessCategory, sizePreset } from '../kitchen.js';
-import { buildFood, DEMO_KEY, foodPortions, lookupBarcode, searchFoods } from '../foods.js';
+import { buildFood, DEMO_KEY, foodPortions, lookupBarcode, rankHits, searchFoods } from '../foods.js';
 import { openScanner } from '../scan.js';
 import { html, icon, pressed } from '../ui.js';
 
@@ -252,7 +252,7 @@ async function runLookup() {
   Object.assign(s, { status: 'loading', results: [], error: null });
   refresh();
   try {
-    const results = await searchFoods(s.query, foodKey());
+    const results = rankHits(s.query, await searchFoods(s.query, foodKey())).slice(0, 12);
     if (ui.sheet !== s) return;
     Object.assign(s, { status: 'done', results });
   } catch (e) {

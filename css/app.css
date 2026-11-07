@@ -396,6 +396,9 @@ h1, h2, h3, p { margin: 0; }
 .ask-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 12px; background: var(--warn-tint); color: var(--warn-text); font-size: 13.5px; font-weight: 700; }
 .ask-row label { flex: 1; min-width: 160px; }
 .ask-row .input.short { width: 90px; }
+.check-row span { flex: 1; min-width: 160px; }
+.check-row .btn { min-height: 40px; padding: 0 14px; }
+.item-row.to-check { box-shadow: inset 4px 0 0 var(--warn-text); }
 .alt-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-left: 4px; }
 .alt-row .or { font-size: 12px; font-weight: 700; color: var(--muted2); text-transform: uppercase; letter-spacing: 0.05em; }
 .alt-row .alt-name { flex: 1; min-width: 120px; font-weight: 600; font-size: 14px; }

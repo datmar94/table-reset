@@ -1,7 +1,7 @@
 import { getData, update, uid } from '../store.js';
 import { ui, go, maps, openSheet, closeSheet, toast, refresh } from '../app.js';
 import { baseAmount, fmtAmount, fmtInt, fmtNum, kindOf, measureAsk, nutrientsFor, recipeNutrition, startAmount, unitsFor, usualSize, withMeasures } from '../nutrition.js';
-import { buildFood, foodPortions, searchFoods } from '../foods.js';
+import { bestHit, buildFood, FILLER, foodPortions, searchFoods, words } from '../foods.js';
 import { guessCategory } from '../kitchen.js';
 import { foodKey, foodPicker, lookupError, unitOptions } from './ingredients.js';
 import { html, icon, pressed, seg, stepper, heroTotals, SLOTS, servingsText } from '../ui.js';
@@ -14,8 +14,6 @@ const UNIT_WORDS = {
   gram: 'g', grams: 'g', g: 'g', kilogram: 'kg', kilograms: 'kg', kg: 'kg', ml: 'ml', milliliter: 'ml', milliliters: 'ml',
   liter: 'l', liters: 'l', l: 'l', clove: 'each', cloves: 'each', can: 'each', cans: 'each', piece: 'each', pieces: 'each',
 };
-const FILLER = new Set(['chopped', 'diced', 'fresh', 'minced', 'sliced', 'to', 'taste', 'of', 'and', 'or', 'large', 'small', 'medium', 'whole', 'finely', 'roughly', 'halved', 'trimmed', 'cooked', 'raw', 'boneless', 'skinless', 'about', 'plus', 'more', 'for', 'serving', 'divided', 'optional', 'the', 'a', 'into', 'cut', 'pieces', 'peeled', 'ground']);
-const words = (s) => s.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean).map((w) => (w.length > 3 && w.endsWith('es') ? w.slice(0, -2) : w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w));
 
 export function parseLine(line) {
   let s = line.trim().replace(/^[-•*\d.)\s]*?(?=[\d½¼¾⅓⅔⅛])/, '').replace(/\(.*?\)/g, ' ');
@@ -38,6 +36,8 @@ export function parseLine(line) {
   return { raw: line.trim(), qty, unit, name: s.replace(/,.*$/, '').trim() };
 }
 
+export { bestHit };
+
 export function matchIngredient(name, ingredients) {
   const want = new Set(words(name).filter((w) => !FILLER.has(w)));
   let best = null, bestScore = 0;
@@ -51,17 +51,6 @@ export function matchIngredient(name, ingredients) {
   return bestScore >= 0.5 ? best : null;
 }
 
-/** The search hit whose name shares the most words with what the recipe asked for. */
-export function bestHit(name, hits) {
-  const want = words(name).filter((w) => !FILLER.has(w));
-  let best = null, bestScore = -1;
-  for (const h of hits) {
-    const have = new Set(words(h.name));
-    const score = want.filter((w) => have.has(w)).length / Math.max(1, want.length) - have.size * 0.01 + (have.has('raw') ? 0.05 : 0);
-    if (score > bestScore) { best = h; bestScore = score; }
-  }
-  return bestScore > 0 ? best : null;
-}
 
 /** A food the import creates for a line that isn't in Ingredients yet. */
 export function newFood(line, found) {
@@ -112,6 +101,12 @@ function askField(kind, ing, i, dr) {
 <input id="ask-${i}-${kind}" class="input short" type="text" inputmode="decimal" autocomplete="off" data-field="r-ask" data-id="${ing.id}" data-kind="${kind}" data-key="r-ask-${i}-${kind}" value="${(dr.patch[ing.id] || {})[kind] || ''}"><span class="muted small">g</span></div>`;
 }
 
+/** The line an import couldn't read an amount from, until the person checks it. */
+function checkRow(it, i) {
+  if (it.checked) return html`<p class="item-sub tiny muted" style="margin:0">The recipe said: “${it.check}”</p>`;
+  return html`<div class="item-sub ask-row check-row"><span>Check the amount. The recipe said: “${it.check}”</span><button type="button" class="btn plain sm" data-action="r-check-ok" data-index="${i}">Looks right</button></div>`;
+}
+
 function altRow(a, i, j, ingById) {
   const ing = ingById[a.ingredientId];
   const name = ing ? ing.name : 'Deleted ingredient';
@@ -129,13 +124,14 @@ function itemRow(it, i, ingById, dr) {
   const meta = n ? `${fmtInt(n.kcal)} kcal · P ${fmtInt(n.p)} · C ${fmtInt(n.c)} · F ${fmtInt(n.f)}`
     : ing && ing.needsNutrition ? 'No nutrition yet: look it up in Ingredients after saving'
     : asks.length ? 'Fill in the weight below to use this unit' : 'Pick a matching unit';
-  return html`<li class="item-row">
+  return html`<li class="item-row${it.check && !it.checked ? ' to-check' : ''}">
 <div class="grow"><span class="title">${name}${ing && ing.isNew ? html` <span class="badge muted">New food</span>` : ''}</span><span class="meta num">${meta}</span></div>
 <label class="sr-only" for="qty-${i}">Amount of ${name}</label>
 <input id="qty-${i}" class="input short" type="text" inputmode="decimal" autocomplete="off" data-field="r-qty" data-index="${i}" data-key="r-qty-${i}" value="${it.qty}">
 <label class="sr-only" for="unit-${i}">Unit</label>
 <select id="unit-${i}" class="select" style="width:auto;min-width:84px" data-field="r-unit" data-index="${i}" data-key="r-unit-${i}">${ing ? unitOptions(it.unit, ing.sizes || []) : html`<option>${it.unit}</option>`}</select>
 <button type="button" class="icon-btn bare" data-action="r-remove" data-index="${i}" aria-label="Remove ${name}">${icon('trash', 18)}</button>
+${it.check ? checkRow(it, i) : ''}
 ${ing ? asks.map((k) => askField(k, ing, i, dr)) : ''}
 ${asks.length ? html`<p class="item-sub tiny muted" style="margin:0">Check the package or weigh it once. It’s saved with the food.</p>` : ''}
 ${(it.alts || []).map((a, j) => altRow(a, i, j, ingById))}
@@ -156,6 +152,13 @@ function altSheet(s) {
 <label class="search">${icon('search')}<span class="sr-only">Search your ingredients</span><input type="search" placeholder="Search your ingredients" data-field="alt-query" data-key="alt-query" value="${s.query}"></label>
 <div class="sheet-scroll">${list || html`<p class="small muted">Nothing matches “${s.query}”.</p>`}</div>
 <button type="button" class="btn plain lg" data-action="close-sheet">Cancel</button>`;
+}
+
+function checkNotice(dr, ingById) {
+  const left = dr.items.filter((it) => it.check && !it.checked);
+  if (!left.length) return '';
+  const names = left.map((it) => (ingById[it.ingredientId] || { name: 'Deleted ingredient' }).name.split(',')[0]);
+  return html`<p class="notice warn">Check the amount for ${names.length === 1 ? names[0] : `${names.length} ingredients: ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`}. The recipe didn’t give one the app could use, so ${names.length === 1 ? 'it’s' : 'they’re'} marked below. You can still save and fix ${names.length === 1 ? 'it' : 'them'} later.</p>`;
 }
 
 function render(params) {
@@ -181,6 +184,7 @@ function render(params) {
   return html`<main class="main with-bar" id="main">
 <div class="topbar"><a class="icon-btn bare lg" href="${back}" aria-label="Discard changes and go back">${icon('close', 24)}</a><h1>${id ? 'Edit recipe' : 'New recipe'}</h1></div>
 ${dr.error ? html`<p class="notice warn" role="alert">${dr.error}</p>` : ''}
+${checkNotice(dr, m.ingById)}
 ${dr.notes.length ? html`<div class="notice ok">${dr.notes.join(' ')}</div>` : ''}
 <div class="cols"><div class="col-side stack">
 <section class="card">
@@ -227,8 +231,9 @@ function renderImport() {
 </section></div>
 <div class="col-side stack">${lines.length ? html`<section class="card tight"><h2>Matches</h2>${lines.map((l) => html`<div style="padding:8px 0;border-bottom:1px solid var(--line-soft)">
 <span class="tiny muted">From the page: “${l.raw}”</span>
-<div class="spread"><span class="bold">${l.skip ? 'Seasoning' : l.ing ? l.ing.name : l.name}</span>${l.skip ? html`<span class="badge muted">Not counted</span>` : l.ing ? (l.ok ? html`<span class="badge ok">${l.amount}</span>` : html`<span class="badge warn">Check the amount</span>`) : html`<span class="badge muted">New food</span>`}</div>
+<div class="spread"><span class="bold">${l.skip ? 'Seasoning' : l.ing ? l.ing.name : l.name}</span>${l.skip ? html`<span class="badge muted">Not counted</span>` : l.ing ? (l.ok ? html`<span class="badge ok">${l.amount}</span>` : html`<span class="badge warn">Check the amount</span>`) : l.ok ? html`<span class="badge muted">New food</span>` : html`<span class="badge warn">New food · check the amount</span>`}</div>
 ${l.isNew ? html`<span class="tiny" style="color:var(--muted2)">${lookText(l)}</span>` : ''}</div>`)}
+${lines.some((l) => !l.skip && !l.ok) ? html`<p class="small muted">For lines marked “Check the amount”, add the amount to that line in the list (for example “2 apples” or “1 cup flour”), or fix it on the next screen.</p>` : ''}
 <p class="small muted">${lines.filter((l) => l.ing).length} of ${lines.filter((l) => !l.skip).length} lines are already in your ingredients. The rest are added as new foods (with 0 in stock) when you save.</p>
 ${imp.lookNote ? html`<p class="notice warn">${imp.lookNote}</p>` : ''}</section>` : html`<p class="empty">Matches show here after you paste the list.</p>`}</div></div>
 <div class="bottom-bar"><a class="btn plain lg" href="#/recipes">Cancel</a><button type="button" class="btn primary lg" data-action="imp-continue"${lines.length && !lines.some((l) => l.look === 'pending') ? '' : html` disabled`}>${lines.some((l) => l.look === 'pending') ? 'Looking up nutrition…' : 'Review and save'}</button></div>
@@ -320,6 +325,7 @@ export const recipeEditView = {
       cur().error = null;
       refresh();
     },
+    'r-check-ok': ({ ds }) => { cur().items[+ds.index].checked = true; refresh(); },
     'r-remove': ({ ds }) => { cur().items.splice(+ds.index, 1); refresh(); },
     'r-alt-add': ({ ds }) => openSheet({ type: 'alt-pick', index: +ds.index, query: '' }),
     'r-alt-pick': ({ ds }) => {
@@ -345,6 +351,7 @@ export const recipeEditView = {
       const dr = cur();
       const fresh = dr.newIngs || {};
       const realId = {};
+      dr.error = null;
       for (const it of dr.items) if (fresh[it.ingredientId] && !realId[it.ingredientId]) realId[it.ingredientId] = uid();
       const items = dr.items.map((it) => {
         const item = { ingredientId: realId[it.ingredientId] || it.ingredientId, qty: parseFloat(it.qty) || 0, unit: it.unit };
@@ -393,18 +400,17 @@ export const recipeEditView = {
       for (const l of imp.parsed) {
         if (l.skip) continue;
         if (l.ing && l.ok) dr.items.push({ ingredientId: l.ing.id, qty: String(+l.qty.toFixed(3)), unit: l.unit });
-        else if (l.ing) { const a = startAmount(l.ing); dr.items.push({ ingredientId: l.ing.id, qty: String(a.qty), unit: a.unit }); }
+        else if (l.ing) { const a = startAmount(l.ing); dr.items.push({ ingredientId: l.ing.id, qty: String(a.qty), unit: a.unit, check: l.raw }); }
         else {
           const tempId = 'new:' + uid();
           const food = newFood(l, l.look === 'found' ? l.found : null);
           dr.newIngs[tempId] = { ...food, id: tempId, isNew: true };
-          dr.items.push({ ingredientId: tempId, qty: String(+l.qty.toFixed(3)), unit: food.unitOk ? l.unit : food.basis.unit });
+          // A unit the food can't convert yet keeps the recipe's amount; the row asks for its weight.
+          dr.items.push({ ingredientId: tempId, qty: String(+l.qty.toFixed(3)), unit: l.unit, ...(l.ok ? {} : { check: l.raw }) });
         }
       }
       const added = Object.keys(dr.newIngs).length;
       if (added) dr.notes.push(`${added} new food${added === 1 ? '' : 's'} will be added to Ingredients with 0 in stock when you save. Then use “Add missing to shopping list” on the recipe.`);
-      const unsure = imp.parsed.filter((l) => !l.skip && !l.ok).length;
-      if (unsure) dr.error = `Check the amount for ${unsure} ingredient${unsure === 1 ? '' : 's'}: the list didn’t give one the app could use.`;
       ui.drafts['recipe:new'] = dr;
       ui.importDraft = null;
       go('#/recipes/new');
@@ -415,8 +421,8 @@ export const recipeEditView = {
     'r-minutes': (v) => { cur().minutes = v; },
     'r-steps': (v) => { cur().steps = v; },
     'r-query': (v) => { cur().query = v; return true; },
-    'r-qty': (v, ds) => { cur().items[+ds.index].qty = v; return true; },
-    'r-unit': (v, ds) => { const it = cur().items[+ds.index]; it.unit = v; it.asks = []; return true; },
+    'r-qty': (v, ds) => { const it = cur().items[+ds.index]; it.qty = v; it.checked = true; return true; },
+    'r-unit': (v, ds) => { const it = cur().items[+ds.index]; it.unit = v; it.asks = []; it.checked = true; return true; },
     'r-ask': (v, ds) => { const dr = cur(); dr.patch[ds.id] = { ...(dr.patch[ds.id] || {}), [ds.kind]: v }; return true; },
     'r-alt-qty': (v, ds) => { cur().items[+ds.index].alts[+ds.alt].qty = v; return true; },
     'r-alt-unit': (v, ds) => { cur().items[+ds.index].alts[+ds.alt].unit = v; return true; },
